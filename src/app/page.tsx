@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ArrowUpRight, Check, Heart, Link2, Plus, Trash2, X } from "lucide-react";
+import { SpaceGate } from "@/components/space-gate";
 import { Locale, messages } from "@/lib/messages";
+import { supabase } from "@/lib/supabase";
 
 type Wish = { id: string; title: string; note: string; url: string; done: boolean };
 type View = "wishes" | "done";
@@ -18,9 +20,25 @@ function validUrl(value: string) {
   }
 }
 
+function readWishes(key: string): Wish[] {
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || "[]");
+    if (!Array.isArray(saved)) return [];
+    return saved.filter((wish): wish is Wish =>
+      typeof wish === "object" && wish !== null &&
+      typeof wish.id === "string" && typeof wish.title === "string" &&
+      typeof wish.note === "string" && typeof wish.url === "string" &&
+      typeof wish.done === "boolean" && validUrl(wish.url)
+    );
+  } catch {
+    return [];
+  }
+}
+
 export default function Home() {
   const [locale, setLocale] = useState<Locale>("zh-CN");
   const [wishes, setWishes] = useState<Wish[]>([]);
+  const [spaceId, setSpaceId] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [view, setView] = useState<View>("wishes");
   const [adding, setAdding] = useState(false);
@@ -35,25 +53,20 @@ export default function Home() {
       setLocale(savedLocale);
       document.documentElement.lang = savedLocale;
     }
-    try {
-      const savedWishes = JSON.parse(localStorage.getItem(WISHES_KEY) || "[]");
-      if (Array.isArray(savedWishes)) {
-        setWishes(savedWishes.filter((wish): wish is Wish =>
-          typeof wish === "object" && wish !== null &&
-          typeof wish.id === "string" && typeof wish.title === "string" &&
-          typeof wish.note === "string" && typeof wish.url === "string" &&
-          typeof wish.done === "boolean" && validUrl(wish.url)
-        ));
-      }
-    } catch {
-      // A damaged local draft should not prevent the app from opening.
-    }
+    if (!supabase) setWishes(readWishes(WISHES_KEY));
     setReady(true);
   }, []);
 
   useEffect(() => {
-    if (ready) localStorage.setItem(WISHES_KEY, JSON.stringify(wishes));
-  }, [ready, wishes]);
+    if (ready && (!supabase || spaceId)) {
+      localStorage.setItem(spaceId ? `${WISHES_KEY}:${spaceId}` : WISHES_KEY, JSON.stringify(wishes));
+    }
+  }, [ready, wishes, spaceId]);
+
+  const changeSpace = useCallback((nextSpaceId: string | null) => {
+    setSpaceId(nextSpaceId);
+    setWishes(nextSpaceId ? readWishes(`${WISHES_KEY}:${nextSpaceId}`) : []);
+  }, []);
 
   function changeLocale(next: Locale) {
     setLocale(next);
@@ -78,6 +91,7 @@ export default function Home() {
   }
 
   return (
+    <SpaceGate locale={locale} onLocaleChange={changeLocale} onSpaceChange={changeSpace}>
     <main className="app-shell">
       <header className="topbar">
         <div className="brand"><Heart size={21} fill="currentColor" strokeWidth={1.5} /><span>{t.brand}</span></div>
@@ -137,5 +151,6 @@ export default function Home() {
         </div>
       </div>}
     </main>
+    </SpaceGate>
   );
 }
