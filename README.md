@@ -15,7 +15,7 @@ See [PLAN.md](PLAN.md) and the repository's GitHub Issues for the MVP roadmap.
 ## Configure shared spaces
 
 1. Create a Supabase project and run the SQL in `supabase/migrations/202609200001_couple_spaces.sql` in its SQL editor.
-2. Copy `.env.example` to `.env.local`. Fill in the project URL and publishable (or anon) key. Never put a service role key in a `NEXT_PUBLIC_` variable.
+2. Copy `.env.example` to `.env.local`. Fill in the project URL and publishable key from Connect > Framework. Never put a secret or service role key in a `NEXT_PUBLIC_` variable.
 3. In Supabase Authentication URL Configuration, allow the local app URL (`http://localhost:3000` or the URL you use) as a redirect URL. For production, add the deployed URL too.
 4. Restart the app. Use two distinct email accounts to test creating a space, generating an invite, accepting it, and signing out.
 
