@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowUpRight, Check, Heart, Link2, ListPlus, MapPin, Plus, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Check, Heart, Link2, ListPlus, MapPin, Pencil, Plus, Trash2, X } from "lucide-react";
 import { SpaceGate } from "@/components/space-gate";
 import { Locale, messages } from "@/lib/messages";
 import { supabase } from "@/lib/supabase";
 
 type ChecklistItem = { id: string; label: string; completed: boolean; position: number };
-type Wish = { id: string; title: string; note: string; url: string; address: string; done: boolean; checklist: ChecklistItem[] };
+type Wish = { id: string; title: string; note: string; url: string; address: string; category: string; done: boolean; checklist: ChecklistItem[] };
 type View = "wishes" | "done";
 
 const WISHES_KEY = "wish-together:wishes";
@@ -33,6 +33,7 @@ function readWishes(key: string): Wish[] {
       ...wish,
       url: typeof wish.url === "string" && validUrl(wish.url) ? wish.url : "",
       address: typeof wish.address === "string" ? wish.address : "",
+      category: typeof wish.category === "string" ? wish.category : "",
       checklist: Array.isArray(wish.checklist) ? wish.checklist : [],
     }));
   } catch {
@@ -47,11 +48,13 @@ export default function Home() {
   const [ready, setReady] = useState(false);
   const [view, setView] = useState<View>("wishes");
   const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
   const [address, setAddress] = useState("");
-  const [checklistLabels, setChecklistLabels] = useState<string[]>([]);
+  const [category, setCategory] = useState("");
+  const [checklistDraft, setChecklistDraft] = useState<ChecklistItem[]>([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -74,7 +77,7 @@ export default function Home() {
     async function loadWishes() {
       setError("");
       const { data: rows, error: wishError } = await client.from("wishes")
-        .select("id, title, note, url, address, status").eq("space_id", spaceId).order("created_at", { ascending: false });
+        .select("id, title, note, url, address, category, status").eq("space_id", spaceId).order("created_at", { ascending: false });
       if (wishError || !rows) return setError(messages[locale].wishLoadError);
       const ids = rows.map((row) => row.id);
       const { data: items, error: itemError } = ids.length
@@ -82,7 +85,7 @@ export default function Home() {
         : { data: [], error: null };
       if (itemError) return setError(messages[locale].wishLoadError);
       setWishes(rows.map((row) => ({
-        id: row.id, title: row.title, note: row.note, url: row.url ?? "", address: row.address ?? "",
+        id: row.id, title: row.title, note: row.note, url: row.url ?? "", address: row.address ?? "", category: row.category ?? "",
         done: row.status === "done",
         checklist: (items ?? []).filter((item) => item.wish_id === row.id),
       })));
@@ -105,39 +108,70 @@ export default function Home() {
   const t = messages[locale];
   const visible = wishes.filter((wish) => wish.done === (view === "done"));
 
+  function resetEditor() {
+    setTitle(""); setUrl(""); setAddress(""); setCategory(""); setNote("");
+    setChecklistDraft([]); setEditingId(null); setError(""); setAdding(false);
+  }
+
+  function openNewWish() {
+    resetEditor();
+    setAdding(true);
+  }
+
+  function openEditWish(wish: Wish) {
+    setTitle(wish.title); setUrl(wish.url); setAddress(wish.address); setCategory(wish.category); setNote(wish.note);
+    setChecklistDraft(wish.checklist.map((item) => ({ ...item })));
+    setEditingId(wish.id); setError(""); setAdding(true);
+  }
+
   async function saveWish(event: React.FormEvent) {
     event.preventDefault();
     if (url.trim() && !validUrl(url.trim())) return setError(t.urlError);
     if (!title.trim()) return setError(t.titleError);
-    const labels = checklistLabels.map((label) => label.trim()).filter(Boolean);
+    const draft = checklistDraft.map((item) => ({ ...item, label: item.label.trim() })).filter((item) => item.label);
     let newWish: Wish;
     if (supabase && spaceId) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return setError(t.wishSaveError);
+      if (editingId) {
+        const { error: updateError } = await supabase.from("wishes").update({
+          title: title.trim(), note: note.trim(), url: url.trim() || null,
+          address: address.trim(), category: category.trim(),
+        }).eq("id", editingId);
+        if (updateError) return setError(t.wishSaveError);
+        const { error: removeError } = await supabase.from("wish_checklist_items").delete().eq("wish_id", editingId);
+        if (removeError) return setError(t.wishSaveError);
+        const items = draft.map((item, position) => ({ id: item.id, wish_id: editingId, space_id: spaceId, label: item.label, completed: item.completed, position }));
+        if (items.length && (await supabase.from("wish_checklist_items").insert(items)).error) return setError(t.wishSaveError);
+        setWishes((current) => current.map((wish) => wish.id === editingId ? {
+          ...wish, title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), category: category.trim(),
+          checklist: draft.map((item, position) => ({ ...item, position })),
+        } : wish));
+        resetEditor();
+        return;
+      }
       const { data, error: insertError } = await supabase.from("wishes").insert({
         space_id: spaceId, created_by: user.id, title: title.trim(), note: note.trim(),
-        url: url.trim() || null, address: address.trim(), status: "wanted",
+        url: url.trim() || null, address: address.trim(), category: category.trim(), status: "wanted",
       }).select("id").single();
       if (insertError || !data) return setError(t.wishSaveError);
-      const items = labels.map((label, position) => ({ wish_id: data.id, space_id: spaceId, label, position }));
+      const items = draft.map((item, position) => ({ id: item.id, wish_id: data.id, space_id: spaceId, label: item.label, completed: item.completed, position }));
       if (items.length) {
         const { error: itemError } = await supabase.from("wish_checklist_items").insert(items);
         if (itemError) { await supabase.from("wishes").delete().eq("id", data.id); return setError(t.wishSaveError); }
       }
-      newWish = { id: data.id, title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), done: false,
-        checklist: labels.map((label, position) => ({ id: crypto.randomUUID(), label, completed: false, position })) };
+      newWish = { id: data.id, title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), category: category.trim(), done: false,
+        checklist: draft.map((item, position) => ({ ...item, position })) };
     } else {
-      newWish = { id: crypto.randomUUID(), title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), done: false,
-        checklist: labels.map((label, position) => ({ id: crypto.randomUUID(), label, completed: false, position })) };
+      if (editingId) {
+        setWishes((current) => current.map((wish) => wish.id === editingId ? { ...wish, title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), category: category.trim(), checklist: draft } : wish));
+        resetEditor();
+        return;
+      }
+      newWish = { id: crypto.randomUUID(), title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), category: category.trim(), done: false, checklist: draft };
     }
     setWishes((current) => [newWish, ...current]);
-    setUrl("");
-    setTitle("");
-    setNote("");
-    setAddress("");
-    setChecklistLabels([]);
-    setError("");
-    setAdding(false);
+    resetEditor();
     setView("wishes");
   }
 
@@ -173,15 +207,15 @@ export default function Home() {
             <button role="tab" aria-selected={view === "wishes"} onClick={() => setView("wishes")}>{t.wishes}<span>{wishes.filter((w) => !w.done).length}</span></button>
             <button role="tab" aria-selected={view === "done"} onClick={() => setView("done")}>{t.done}<span>{wishes.filter((w) => w.done).length}</span></button>
           </div>
-          <button className="primary" type="button" onClick={() => setAdding(true)}><Plus size={18} />{t.add}</button>
+          <button className="primary" type="button" onClick={openNewWish}><Plus size={18} />{t.add}</button>
         </div>
 
         {visible.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-icon"><Link2 size={25} /></div>
+            <div className="empty-icon"><Heart size={25} /></div>
             <h1>{view === "done" ? t.completedEmpty : t.emptyTitle}</h1>
             {view === "wishes" && <p>{t.emptyBody}</p>}
-            {view === "wishes" && <button type="button" className="text-action" onClick={() => setAdding(true)}><Plus size={16} />{t.add}</button>}
+            {view === "wishes" && <button type="button" className="text-action" onClick={openNewWish}><Plus size={16} />{t.add}</button>}
           </div>
         ) : (
           <div className="wish-list">
@@ -190,6 +224,7 @@ export default function Home() {
                 <div className="wish-mark"><Heart size={17} /></div>
                 <div className="wish-content">
                   <h2>{wish.title}</h2>
+                  {wish.category && <span className="wish-category">{wish.category}</span>}
                   {wish.note && <p>{wish.note}</p>}
                   {wish.address && <p className="wish-meta"><MapPin size={14} />{wish.address}</p>}
                   {wish.url && <a href={wish.url} target="_blank" rel="noopener noreferrer"><Link2 size={14} />{new URL(wish.url).hostname}<ArrowUpRight size={14} /></a>}
@@ -201,6 +236,7 @@ export default function Home() {
                   </div>}
                 </div>
                 <div className="row-actions">
+                  <button type="button" className="icon-button" title={t.edit} aria-label={t.edit} onClick={() => openEditWish(wish)}><Pencil size={17} /></button>
                   <button type="button" className="icon-button" title={wish.done ? t.undo : t.markDone} aria-label={wish.done ? t.undo : t.markDone} onClick={() => void toggleWish(wish)}><Check size={18} /></button>
                   <button type="button" className="icon-button danger" title={t.delete} aria-label={t.delete} onClick={() => void deleteWish(wish.id)}><Trash2 size={17} /></button>
                 </div>
@@ -211,23 +247,24 @@ export default function Home() {
         <p className="storage-note">{supabase ? t.sharedStorage : t.localOnly}</p>
       </section>
 
-      {adding && <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setAdding(false); }}>
+      {adding && <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) resetEditor(); }}>
         <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
-          <div className="dialog-head"><h2 id="dialog-title">{t.add}</h2><button type="button" className="icon-button" aria-label={t.cancel} onClick={() => setAdding(false)}><X size={20} /></button></div>
+          <div className="dialog-head"><h2 id="dialog-title">{editingId ? t.edit : t.add}</h2><button type="button" className="icon-button" aria-label={t.cancel} onClick={resetEditor}><X size={20} /></button></div>
           <form onSubmit={saveWish}>
             <label>{t.title}<input autoFocus required value={title} onChange={(e) => { setTitle(e.target.value); setError(""); }} /></label>
             <label>{t.pasteLink} <span className="optional-label">{t.optional}</span><input type="url" value={url} onChange={(e) => { setUrl(e.target.value); setError(""); }} placeholder="https://" /></label>
             <label>{t.address} <span className="optional-label">{t.optional}</span><input value={address} onChange={(e) => setAddress(e.target.value)} /></label>
+            <label>{t.category} <span className="optional-label">{t.optional}</span><input value={category} onChange={(e) => setCategory(e.target.value)} /></label>
             <label>{t.note}<textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} /></label>
             <fieldset className="checklist-editor"><legend>{t.checklist} <span className="optional-label">{t.optional}</span></legend>
-              {checklistLabels.map((label, index) => <div key={index}>
-                <input value={label} onChange={(event) => setChecklistLabels((items) => items.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} />
-                <button type="button" className="icon-button" aria-label={t.removeChecklistItem} onClick={() => setChecklistLabels((items) => items.filter((_, itemIndex) => itemIndex !== index))}><X size={16} /></button>
+              {checklistDraft.map((item, index) => <div key={item.id}>
+                <input value={item.label} onChange={(event) => setChecklistDraft((items) => items.map((entry, itemIndex) => itemIndex === index ? { ...entry, label: event.target.value } : entry))} />
+                <button type="button" className="icon-button" aria-label={t.removeChecklistItem} onClick={() => setChecklistDraft((items) => items.filter((_, itemIndex) => itemIndex !== index))}><X size={16} /></button>
               </div>)}
-              <button type="button" className="text-action" onClick={() => setChecklistLabels((items) => [...items, ""])}><ListPlus size={16} />{t.checklistItem}</button>
+              <button type="button" className="text-action" onClick={() => setChecklistDraft((items) => [...items, { id: crypto.randomUUID(), label: "", completed: false, position: items.length }])}><ListPlus size={16} />{t.checklistItem}</button>
             </fieldset>
             {error && <p className="form-error" role="alert">{error}</p>}
-            <div className="dialog-actions"><button type="button" className="secondary" onClick={() => setAdding(false)}>{t.cancel}</button><button type="submit" className="primary">{t.save}</button></div>
+            <div className="dialog-actions"><button type="button" className="secondary" onClick={resetEditor}>{t.cancel}</button><button type="submit" className="primary">{editingId ? t.saveChanges : t.save}</button></div>
           </form>
         </div>
       </div>}
