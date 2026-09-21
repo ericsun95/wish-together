@@ -7,7 +7,8 @@ import { Locale, messages } from "@/lib/messages";
 import { supabase } from "@/lib/supabase";
 
 type ChecklistItem = { id: string; label: string; completed: boolean; position: number };
-type Wish = { id: string; title: string; note: string; url: string; address: string; category: string; done: boolean; checklist: ChecklistItem[] };
+type WishStatus = "wanted" | "planned" | "done";
+type Wish = { id: string; title: string; note: string; url: string; address: string; category: string; status: WishStatus; plannedDate: string; completionNote: string; checklist: ChecklistItem[] };
 type View = "wishes" | "done";
 type Theme = "clean" | "coast" | "city" | "garden";
 
@@ -28,17 +29,20 @@ function readWishes(key: string): Wish[] {
   try {
     const saved = JSON.parse(localStorage.getItem(key) || "[]");
     if (!Array.isArray(saved)) return [];
-    return saved.filter((wish): wish is Wish =>
+    return saved.filter((wish: unknown) =>
       typeof wish === "object" && wish !== null &&
-      typeof wish.id === "string" && typeof wish.title === "string" &&
-      typeof wish.note === "string" && typeof wish.done === "boolean"
-    ).map((wish) => ({
+      typeof (wish as Record<string, unknown>).id === "string" && typeof (wish as Record<string, unknown>).title === "string" &&
+      typeof (wish as Record<string, unknown>).note === "string"
+    ).map((wish: Record<string, unknown>) => ({
       ...wish,
       url: typeof wish.url === "string" && validUrl(wish.url) ? wish.url : "",
       address: typeof wish.address === "string" ? wish.address : "",
       category: typeof wish.category === "string" ? wish.category : "",
+      status: wish.status === "planned" || wish.status === "done" ? wish.status : wish.done === true ? "done" : "wanted",
+      plannedDate: typeof wish.plannedDate === "string" ? wish.plannedDate : "",
+      completionNote: typeof wish.completionNote === "string" ? wish.completionNote : "",
       checklist: Array.isArray(wish.checklist) ? wish.checklist : [],
-    }));
+    })) as Wish[];
   } catch {
     return [];
   }
@@ -59,6 +63,9 @@ export default function Home() {
   const [note, setNote] = useState("");
   const [address, setAddress] = useState("");
   const [category, setCategory] = useState("");
+  const [status, setStatus] = useState<WishStatus>("wanted");
+  const [plannedDate, setPlannedDate] = useState("");
+  const [completionNote, setCompletionNote] = useState("");
   const [checklistDraft, setChecklistDraft] = useState<ChecklistItem[]>([]);
   const [error, setError] = useState("");
 
@@ -86,7 +93,7 @@ export default function Home() {
     async function loadWishes() {
       setError("");
       const { data: rows, error: wishError } = await client.from("wishes")
-        .select("id, title, note, url, address, category, status").eq("space_id", spaceId).order("created_at", { ascending: false });
+        .select("id, title, note, url, address, category, status, planned_date, completed_note").eq("space_id", spaceId).order("created_at", { ascending: false });
       if (wishError || !rows) return setError(messages[locale].wishLoadError);
       const ids = rows.map((row) => row.id);
       const { data: items, error: itemError } = ids.length
@@ -95,7 +102,7 @@ export default function Home() {
       if (itemError) return setError(messages[locale].wishLoadError);
       setWishes(rows.map((row) => ({
         id: row.id, title: row.title, note: row.note, url: row.url ?? "", address: row.address ?? "", category: row.category ?? "",
-        done: row.status === "done",
+        status: row.status as WishStatus, plannedDate: row.planned_date ?? "", completionNote: row.completed_note ?? "",
         checklist: (items ?? []).filter((item) => item.wish_id === row.id),
       })));
     }
@@ -125,13 +132,13 @@ export default function Home() {
   }
 
   const t = messages[locale];
-  const visible = wishes.filter((wish) => wish.done === (view === "done"));
+  const visible = wishes.filter((wish) => (wish.status === "done") === (view === "done"));
   const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
   const themeImage = (selected: Theme) => selected === "clean" ? undefined : `url("${basePath}/themes/${selected}.webp")`;
   const themeStyle = { "--theme-image": themeImage(theme) } as CSSProperties;
 
   function resetEditor() {
-    setTitle(""); setUrl(""); setAddress(""); setCategory(""); setNote("");
+    setTitle(""); setUrl(""); setAddress(""); setCategory(""); setNote(""); setStatus("wanted"); setPlannedDate(""); setCompletionNote("");
     setChecklistDraft([]); setEditingId(null); setError(""); setAdding(false);
   }
 
@@ -142,6 +149,7 @@ export default function Home() {
 
   function openEditWish(wish: Wish) {
     setTitle(wish.title); setUrl(wish.url); setAddress(wish.address); setCategory(wish.category); setNote(wish.note);
+    setStatus(wish.status); setPlannedDate(wish.plannedDate); setCompletionNote(wish.completionNote);
     setChecklistDraft(wish.checklist.map((item) => ({ ...item })));
     setEditingId(wish.id); setError(""); setAdding(true);
   }
@@ -171,7 +179,8 @@ export default function Home() {
       if (editingId) {
         const { error: updateError } = await supabase.from("wishes").update({
           title: title.trim(), note: note.trim(), url: url.trim() || null,
-          address: address.trim(), category: category.trim(),
+          address: address.trim(), category: category.trim(), status, planned_date: status === "planned" ? plannedDate || null : null,
+          completed_at: status === "done" ? new Date().toISOString() : null, completed_note: status === "done" ? completionNote.trim() : "",
         }).eq("id", editingId);
         if (updateError) return setError(t.wishSaveError);
         const { error: removeError } = await supabase.from("wish_checklist_items").delete().eq("wish_id", editingId);
@@ -179,7 +188,8 @@ export default function Home() {
         const items = draft.map((item, position) => ({ id: item.id, wish_id: editingId, space_id: spaceId, label: item.label, completed: item.completed, position }));
         if (items.length && (await supabase.from("wish_checklist_items").insert(items)).error) return setError(t.wishSaveError);
         setWishes((current) => current.map((wish) => wish.id === editingId ? {
-          ...wish, title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), category: category.trim(),
+          ...wish, title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), category: category.trim(), status,
+          plannedDate: status === "planned" ? plannedDate : "", completionNote: status === "done" ? completionNote.trim() : "",
           checklist: draft.map((item, position) => ({ ...item, position })),
         } : wish));
         resetEditor();
@@ -187,7 +197,9 @@ export default function Home() {
       }
       const { data, error: insertError } = await supabase.from("wishes").insert({
         space_id: spaceId, created_by: user.id, title: title.trim(), note: note.trim(),
-        url: url.trim() || null, address: address.trim(), category: category.trim(), status: "wanted",
+        url: url.trim() || null, address: address.trim(), category: category.trim(), status,
+        planned_date: status === "planned" ? plannedDate || null : null, completed_at: status === "done" ? new Date().toISOString() : null,
+        completed_note: status === "done" ? completionNote.trim() : "",
       }).select("id").single();
       if (insertError || !data) return setError(t.wishSaveError);
       const items = draft.map((item, position) => ({ id: item.id, wish_id: data.id, space_id: spaceId, label: item.label, completed: item.completed, position }));
@@ -195,15 +207,16 @@ export default function Home() {
         const { error: itemError } = await supabase.from("wish_checklist_items").insert(items);
         if (itemError) { await supabase.from("wishes").delete().eq("id", data.id); return setError(t.wishSaveError); }
       }
-      newWish = { id: data.id, title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), category: category.trim(), done: false,
+      newWish = { id: data.id, title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), category: category.trim(), status,
+        plannedDate: status === "planned" ? plannedDate : "", completionNote: status === "done" ? completionNote.trim() : "",
         checklist: draft.map((item, position) => ({ ...item, position })) };
     } else {
       if (editingId) {
-        setWishes((current) => current.map((wish) => wish.id === editingId ? { ...wish, title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), category: category.trim(), checklist: draft } : wish));
+        setWishes((current) => current.map((wish) => wish.id === editingId ? { ...wish, title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), category: category.trim(), status, plannedDate: status === "planned" ? plannedDate : "", completionNote: status === "done" ? completionNote.trim() : "", checklist: draft } : wish));
         resetEditor();
         return;
       }
-      newWish = { id: crypto.randomUUID(), title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), category: category.trim(), done: false, checklist: draft };
+      newWish = { id: crypto.randomUUID(), title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), category: category.trim(), status, plannedDate: status === "planned" ? plannedDate : "", completionNote: status === "done" ? completionNote.trim() : "", checklist: draft };
     }
     setWishes((current) => [newWish, ...current]);
     resetEditor();
@@ -211,8 +224,9 @@ export default function Home() {
   }
 
   async function toggleWish(wish: Wish) {
-    if (supabase) await supabase.from("wishes").update({ status: wish.done ? "wanted" : "done", completed_at: wish.done ? null : new Date().toISOString() }).eq("id", wish.id);
-    setWishes((all) => all.map((item) => item.id === wish.id ? { ...item, done: !item.done } : item));
+    const nextStatus: WishStatus = wish.status === "done" ? "wanted" : "done";
+    if (supabase) await supabase.from("wishes").update({ status: nextStatus, planned_date: null, completed_at: nextStatus === "done" ? new Date().toISOString() : null }).eq("id", wish.id);
+    setWishes((all) => all.map((item) => item.id === wish.id ? { ...item, status: nextStatus, plannedDate: "" } : item));
   }
 
   async function toggleChecklist(wishId: string, item: ChecklistItem) {
@@ -242,8 +256,8 @@ export default function Home() {
       <section className="workspace">
         <div className="section-head">
           <div className="tabs" role="tablist">
-            <button role="tab" aria-selected={view === "wishes"} onClick={() => setView("wishes")}>{t.wishes}<span>{wishes.filter((w) => !w.done).length}</span></button>
-            <button role="tab" aria-selected={view === "done"} onClick={() => setView("done")}>{t.done}<span>{wishes.filter((w) => w.done).length}</span></button>
+            <button role="tab" aria-selected={view === "wishes"} onClick={() => setView("wishes")}>{t.wishes}<span>{wishes.filter((w) => w.status !== "done").length}</span></button>
+            <button role="tab" aria-selected={view === "done"} onClick={() => setView("done")}>{t.done}<span>{wishes.filter((w) => w.status === "done").length}</span></button>
           </div>
           <button className="primary" type="button" onClick={openNewWish}><Plus size={18} />{t.add}</button>
         </div>
@@ -263,7 +277,9 @@ export default function Home() {
                 <div className="wish-content">
                   <h2>{wish.title}</h2>
                   {wish.category && <span className="wish-category">{wish.category}</span>}
+                  {wish.status === "planned" && <span className="wish-status">{t.plannedStatus}{wish.plannedDate ? ` · ${wish.plannedDate}` : ""}</span>}
                   {wish.note && <p>{wish.note}</p>}
+                  {wish.status === "done" && wish.completionNote && <p className="completion-note">{wish.completionNote}</p>}
                   {wish.address && <p className="wish-meta"><MapPin size={14} />{wish.address}</p>}
                   {wish.url && <a href={wish.url} target="_blank" rel="noopener noreferrer"><Link2 size={14} />{new URL(wish.url).hostname}<ArrowUpRight size={14} /></a>}
                   {wish.checklist.length > 0 && <div className="wish-checklist">
@@ -275,7 +291,7 @@ export default function Home() {
                 </div>
                 <div className="row-actions">
                   <button type="button" className="icon-button" title={t.edit} aria-label={t.edit} onClick={() => openEditWish(wish)}><Pencil size={17} /></button>
-                  <button type="button" className="icon-button" title={wish.done ? t.undo : t.markDone} aria-label={wish.done ? t.undo : t.markDone} onClick={() => void toggleWish(wish)}><Check size={18} /></button>
+                  <button type="button" className="icon-button" title={wish.status === "done" ? t.undo : t.markDone} aria-label={wish.status === "done" ? t.undo : t.markDone} onClick={() => void toggleWish(wish)}><Check size={18} /></button>
                   <button type="button" className="icon-button danger" title={t.delete} aria-label={t.delete} onClick={() => void deleteWish(wish.id)}><Trash2 size={17} /></button>
                 </div>
               </article>
@@ -294,6 +310,11 @@ export default function Home() {
             <label>{t.address} <span className="optional-label">{t.optional}</span><input value={address} onChange={(e) => setAddress(e.target.value)} /></label>
             <label>{t.category} <span className="optional-label">{t.optional}</span><input value={category} onChange={(e) => setCategory(e.target.value)} /></label>
             <label>{t.note}<textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} /></label>
+            <fieldset className="status-editor"><legend>{t.status}</legend><div className="segmented-control">
+              {(["wanted", "planned", "done"] as WishStatus[]).map((option) => <button type="button" key={option} aria-pressed={status === option} onClick={() => setStatus(option)}>{option === "wanted" ? t.wantedStatus : option === "planned" ? t.plannedStatus : t.doneStatus}</button>)}
+            </div></fieldset>
+            {status === "planned" && <label>{t.plannedDate} <span className="optional-label">{t.optional}</span><input type="date" value={plannedDate} onChange={(e) => setPlannedDate(e.target.value)} /></label>}
+            {status === "done" && <label>{t.completionNote} <span className="optional-label">{t.optional}</span><textarea value={completionNote} onChange={(e) => setCompletionNote(e.target.value)} rows={2} /></label>}
             <fieldset className="checklist-editor"><legend>{t.checklist} <span className="optional-label">{t.optional}</span></legend>
               {checklistDraft.map((item, index) => <div key={item.id}>
                 <input value={item.label} onChange={(event) => setChecklistDraft((items) => items.map((entry, itemIndex) => itemIndex === index ? { ...entry, label: event.target.value } : entry))} />
