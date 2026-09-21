@@ -27,6 +27,8 @@ try {
   `);
   const migration = await readFile(new URL("../supabase/migrations/202609200001_couple_spaces.sql", import.meta.url), "utf8");
   await db.exec(migration);
+  const wishDetailsMigration = await readFile(new URL("../supabase/migrations/202609210001_wish_details.sql", import.meta.url), "utf8");
+  await db.exec(wishDetailsMigration);
 
   await as(owner);
   const created = await db.query("select public.create_couple_space($1) as id", ["Our list"]);
@@ -55,20 +57,25 @@ try {
 
   await as(owner);
   await rejects("select public.create_space_invitation()");
-  const savedWish = await db.query("insert into public.wishes (space_id, created_by, title, url) values ($1, $2, $3, $4) returning id", [spaceId, owner, "Cafe", "https://example.com"]);
+  const savedWish = await db.query("insert into public.wishes (space_id, created_by, title, url, address) values ($1, $2, $3, $4, $5) returning id", [spaceId, owner, "Cafe", null, "123 Main St"]);
   const wishId = savedWish.rows[0].id;
+  await db.query("insert into public.wish_checklist_items (wish_id, space_id, label) values ($1, $2, $3)", [wishId, spaceId, "Book a table"]);
   await db.query("insert into public.checkins (space_id, wish_id, created_by, note) values ($1, $2, $3, $4)", [spaceId, wishId, owner, "Great day"]);
 
   await as(partner);
   assert.equal((await db.query("select count(*)::int as count from public.wishes")).rows[0].count, 1);
   assert.equal((await db.query("select count(*)::int as count from public.checkins")).rows[0].count, 1);
+  assert.equal((await db.query("select count(*)::int as count from public.wish_checklist_items")).rows[0].count, 1);
+  await db.query("update public.wish_checklist_items set completed = true where wish_id = $1", [wishId]);
 
   await as(outsider);
   assert.equal((await db.query("select count(*)::int as count from public.wishes")).rows[0].count, 0);
   assert.equal((await db.query("select count(*)::int as count from public.checkins")).rows[0].count, 0);
+  assert.equal((await db.query("select count(*)::int as count from public.wish_checklist_items")).rows[0].count, 0);
   await rejects("select public.accept_space_invitation($1)", [token]);
   await rejects("insert into public.wishes (space_id, created_by, title, url) values ($1, $2, $3, $4)", [spaceId, outsider, "No", "https://example.com"]);
   await rejects("insert into public.checkins (space_id, wish_id, created_by) values ($1, $2, $3)", [spaceId, wishId, outsider]);
+  await rejects("insert into public.wish_checklist_items (wish_id, space_id, label) values ($1, $2, $3)", [wishId, spaceId, "No"]);
 
   await db.exec("reset role");
   console.log("Database permissions and invitation flow passed.");
