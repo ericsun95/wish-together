@@ -7,9 +7,8 @@
   background-size: cover;
   background-attachment: fixed;
 }
-.app-shell[data-theme="coast"] { --theme-image: url('/themes/coast.webp'); }
+.app-shell[data-theme="coast"] { --theme-overlay: light; }
 .app-shell[data-theme="city"] {
-  --theme-image: url('/themes/city.webp');
   --ink: #eef3f0;
   --muted: #b9c4bf;
   --line: #ffffff2b;
@@ -19,7 +18,7 @@
   --accent-light: #552e35;
   background-image: linear-gradient(#10191fba, #10191fba), var(--theme-image);
 }
-.app-shell[data-theme="garden"] { --theme-image: url('/themes/garden.webp'); }
+.app-shell[data-theme="garden"] { --theme-overlay: light; }
 .app-shell .topbar {
   background: color-mix(in srgb, var(--surface) 90%, transparent);
   backdrop-filter: blur(16px);
@@ -62,9 +61,6 @@
 .theme-option:hover { border-color: var(--accent); }
 .theme-option[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .theme-preview { width: 76px; aspect-ratio: 4 / 3; border-radius: 5px; background: #fafbf9 center / cover no-repeat; border: 1px solid #00000010; }
-.theme-option[data-theme-option="coast"] .theme-preview { background-image: url('/themes/coast.webp'); }
-.theme-option[data-theme-option="city"] .theme-preview { background-image: url('/themes/city.webp'); }
-.theme-option[data-theme-option="garden"] .theme-preview { background-image: url('/themes/garden.webp'); }
 .theme-option > svg { color: var(--accent); }
 @media (max-width: 600px) {
   .theme-grid { grid-template-columns: 1fr; }
