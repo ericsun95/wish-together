@@ -9,7 +9,7 @@ A private shared wishlist for two people. Save inspiration links, decide what to
 - Build a mobile-first web app with Next.js and TypeScript.
 - Support Simplified Chinese (`zh-CN`) and English (`en`) from the first release. Both partners can choose their own language; the choice persists across sessions. The switch translates app-owned UI text, not wish titles or notes written by users.
 - Let one partner invite the other into a private shared space.
-- Start a new wish by pasting a URL into the app. Keep that URL in the form and let users enter or edit the title, optional note, and category. Xiaohongshu links are stored and opened as links.
+- Start a new wish with a title. A source URL, place/address, note, category, and checklist are optional. Xiaohongshu links are stored and opened as links when provided.
 - Use three wish states: Want to do, Planned, and Done. Planned wishes can have an optional target date.
 - A completed wish can have a completion date and short note.
 - Keep the interface focused on the shared list and completed memories. Reminders, public sharing, and link scraping are outside the MVP. Native share-sheet intake and check-in photos follow after the core flow works.
@@ -32,9 +32,9 @@ Create one issue for each item below, in order. Keep issue titles, descriptions,
 
 ### 3. Create and organize wishes
 
-**Scope:** Add, edit, delete, and list wishes with title, note, category, and URL. Make pasted links the entry point for a new wish. Show who added each wish.
+**Scope:** Add, edit, delete, and list wishes with a required title plus optional note, category, source URL, place/address, and checklist. Show who added each wish.
 
-**Acceptance criteria:** Pasting a Xiaohongshu URL starts a wish with the URL retained; the user can enter or edit its title; the saved link opens correctly; malformed URLs are rejected with a localized message; both members see the same list; empty, loading, and error states work in both languages.
+**Acceptance criteria:** A wish can be saved without a URL; a provided Xiaohongshu or other source URL is retained and opens correctly; malformed non-empty URLs are rejected with a localized message; a wish can store an optional place/address; members can add, remove, and check checklist items; both members see the same list; empty, loading, and error states work in both languages.
 
 ### 4. Plan and complete wishes
 
@@ -52,7 +52,7 @@ Create one issue for each item below, in order. Keep issue titles, descriptions,
 
 **Scope:** Test the two-member journey, both locales, permissions, and deployment configuration.
 
-**Acceptance criteria:** A fresh user can create a space, invite a partner, save a Xiaohongshu link, plan it, and check it off; unauthorized access is denied; the deployed app has a documented setup path.
+**Acceptance criteria:** A fresh user can create a space, invite a partner, save a wish with or without a source link, plan it, and check it off; unauthorized access is denied; the deployed app has a documented setup path.
 
 ## Open product decisions
 
