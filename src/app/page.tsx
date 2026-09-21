@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ArrowUpRight, Check, Heart, Link2, ListPlus, MapPin, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Check, Heart, Link2, ListPlus, MapPin, Palette, Pencil, Plus, Trash2, X } from "lucide-react";
 import { SpaceGate } from "@/components/space-gate";
 import { Locale, messages } from "@/lib/messages";
 import { supabase } from "@/lib/supabase";
@@ -9,9 +9,12 @@ import { supabase } from "@/lib/supabase";
 type ChecklistItem = { id: string; label: string; completed: boolean; position: number };
 type Wish = { id: string; title: string; note: string; url: string; address: string; category: string; done: boolean; checklist: ChecklistItem[] };
 type View = "wishes" | "done";
+type Theme = "clean" | "coast" | "city" | "garden";
 
 const WISHES_KEY = "wish-together:wishes";
 const LOCALE_KEY = "wish-together:locale";
+const THEME_KEY = "wish-together:theme";
+const THEMES: Theme[] = ["clean", "coast", "city", "garden"];
 
 function validUrl(value: string) {
   try {
@@ -48,6 +51,8 @@ export default function Home() {
   const [ready, setReady] = useState(false);
   const [view, setView] = useState<View>("wishes");
   const [adding, setAdding] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [theme, setTheme] = useState<Theme>("clean");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
@@ -63,7 +68,11 @@ export default function Home() {
       setLocale(savedLocale);
       document.documentElement.lang = savedLocale;
     }
-    if (!supabase) setWishes(readWishes(WISHES_KEY));
+    if (!supabase) {
+      setWishes(readWishes(WISHES_KEY));
+      const savedTheme = localStorage.getItem(THEME_KEY);
+      if (THEMES.includes(savedTheme as Theme)) setTheme(savedTheme as Theme);
+    }
     setReady(true);
   }, []);
 
@@ -92,6 +101,16 @@ export default function Home() {
     }
     void loadWishes();
   }, [spaceId, locale]);
+
+  useEffect(() => {
+    if (!supabase || !spaceId) return;
+    const client = supabase;
+    async function loadTheme() {
+      const { data } = await client.from("couple_spaces").select("theme").eq("id", spaceId).single();
+      if (data && THEMES.includes(data.theme as Theme)) setTheme(data.theme as Theme);
+    }
+    void loadTheme();
+  }, [spaceId]);
 
   const changeSpace = useCallback((nextSpaceId: string | null) => {
     setSpaceId(nextSpaceId);
@@ -122,6 +141,19 @@ export default function Home() {
     setTitle(wish.title); setUrl(wish.url); setAddress(wish.address); setCategory(wish.category); setNote(wish.note);
     setChecklistDraft(wish.checklist.map((item) => ({ ...item })));
     setEditingId(wish.id); setError(""); setAdding(true);
+  }
+
+  async function chooseTheme(nextTheme: Theme) {
+    const previous = theme;
+    setTheme(nextTheme);
+    setError("");
+    if (supabase && spaceId) {
+      const { error: themeError } = await supabase.from("couple_spaces").update({ theme: nextTheme }).eq("id", spaceId);
+      if (themeError) { setTheme(previous); setError(t.themeSaveError); return; }
+    } else {
+      localStorage.setItem(THEME_KEY, nextTheme);
+    }
+    setAppearanceOpen(false);
   }
 
   async function saveWish(event: React.FormEvent) {
@@ -192,12 +224,15 @@ export default function Home() {
 
   return (
     <SpaceGate locale={locale} onLocaleChange={changeLocale} onSpaceChange={changeSpace}>
-    <main className="app-shell">
+    <main className="app-shell" data-theme={theme}>
       <header className="topbar">
         <div className="brand"><Heart size={21} fill="currentColor" strokeWidth={1.5} /><span>{t.brand}</span></div>
-        <div className="locale-control" role="group" aria-label={t.language}>
-          <button type="button" aria-pressed={locale === "zh-CN"} onClick={() => changeLocale("zh-CN")}>中</button>
-          <button type="button" aria-pressed={locale === "en"} onClick={() => changeLocale("en")}>EN</button>
+        <div className="topbar-actions">
+          <button type="button" className="icon-button appearance-button" title={t.appearance} aria-label={t.appearance} onClick={() => setAppearanceOpen(true)}><Palette size={18} /></button>
+          <div className="locale-control" role="group" aria-label={t.language}>
+            <button type="button" aria-pressed={locale === "zh-CN"} onClick={() => changeLocale("zh-CN")}>中</button>
+            <button type="button" aria-pressed={locale === "en"} onClick={() => changeLocale("en")}>EN</button>
+          </div>
         </div>
       </header>
 
@@ -266,6 +301,18 @@ export default function Home() {
             {error && <p className="form-error" role="alert">{error}</p>}
             <div className="dialog-actions"><button type="button" className="secondary" onClick={resetEditor}>{t.cancel}</button><button type="submit" className="primary">{editingId ? t.saveChanges : t.save}</button></div>
           </form>
+        </div>
+      </div>}
+      {appearanceOpen && <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setAppearanceOpen(false); }}>
+        <div className="dialog appearance-dialog" role="dialog" aria-modal="true" aria-labelledby="appearance-title">
+          <div className="dialog-head"><div><h2 id="appearance-title">{t.appearanceTitle}</h2><p>{t.appearanceBody}</p></div><button type="button" className="icon-button" aria-label={t.cancel} onClick={() => setAppearanceOpen(false)}><X size={20} /></button></div>
+          <div className="theme-grid">
+            {THEMES.map((option) => <button type="button" key={option} className="theme-option" data-theme-option={option} aria-pressed={theme === option} onClick={() => void chooseTheme(option)}>
+              <span className="theme-preview" />
+              <span>{option === "clean" ? t.themeClean : option === "coast" ? t.themeCoast : option === "city" ? t.themeCity : t.themeGarden}</span>
+              {theme === option && <Check size={16} />}
+            </button>)}
+          </div>
         </div>
       </div>}
     </main>
