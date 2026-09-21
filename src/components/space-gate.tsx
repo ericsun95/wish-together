@@ -34,6 +34,7 @@ export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange }: {
   const [inviteInput, setInviteInput] = useState("");
   const [inviteToken, setInviteToken] = useState("");
   const [busy, setBusy] = useState(false);
+  const [emailCooldown, setEmailCooldown] = useState(0);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const t = messages[locale];
@@ -93,6 +94,14 @@ export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange }: {
     if (authReady && spaceReady) onSpaceChange(space?.id ?? null);
   }, [authReady, spaceReady, space?.id, onSpaceChange]);
 
+  useEffect(() => {
+    if (emailCooldown <= 0) return;
+    const timer = window.setInterval(() => {
+      setEmailCooldown((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [emailCooldown]);
+
   async function sendLink(event: React.FormEvent) {
     event.preventDefault();
     if (!supabase) return;
@@ -102,8 +111,18 @@ export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange }: {
       options: { emailRedirectTo: window.location.href },
     });
     setBusy(false);
-    if (authError) setError(t.signInError);
-    else setNotice(t.checkEmail);
+    if (authError) {
+      if (authError.status === 429 || authError.code === "over_email_send_rate_limit") {
+        const wait = Number(authError.message.match(/(\d+) seconds?/)?.[1] ?? 60);
+        setEmailCooldown(wait);
+        setError(t.emailRateLimited);
+      } else {
+        setError(t.signInError);
+      }
+    } else {
+      setEmailCooldown(60);
+      setNotice(t.checkEmail);
+    }
   }
 
   async function createSpace(event: React.FormEvent) {
@@ -165,7 +184,9 @@ export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange }: {
       <div className="gate-heading"><Mail size={27} /><h1>{t.signInTitle}</h1><p>{t.signInBody}</p></div>
       <form className="gate-form" onSubmit={sendLink}>
         <label>{t.email}<input required type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-        <button className="primary" disabled={busy} type="submit">{t.sendLink}<ArrowRight size={16} /></button>
+        <button className="primary" disabled={busy || emailCooldown > 0} type="submit">
+          {emailCooldown > 0 ? t.resendIn.replace("{seconds}", String(emailCooldown)) : t.sendLink}<ArrowRight size={16} />
+        </button>
       </form>
       {notice && <p className="gate-notice" role="status">{notice}</p>}
       {error && <p className="form-error" role="alert">{error}</p>}
