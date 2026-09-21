@@ -95,9 +95,13 @@ export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange }: {
   async function signInWithGoogle() {
     if (!supabase) return;
     setBusy(true); setError(""); setNotice("");
+    const returnTo = `${window.location.origin}${window.location.pathname}${window.location.search}`;
     const { error: authError } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: window.location.origin },
+      options: {
+        redirectTo: returnTo,
+        queryParams: { prompt: "select_account" },
+      },
     });
     setBusy(false);
     if (authError) setError(t.signInError);
