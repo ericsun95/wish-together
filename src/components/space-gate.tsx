@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { ArrowRight, Copy, Heart, LogOut, Mail, Plus, RotateCcw, UserRoundPlus } from "lucide-react";
+import { ArrowRight, Copy, Heart, LogIn, LogOut, Plus, RotateCcw, UserRoundPlus } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { messages, type Locale } from "@/lib/messages";
 import { supabase } from "@/lib/supabase";
@@ -29,12 +29,10 @@ export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange }: {
   const [space, setSpace] = useState<Space | null>(null);
   const [spaceUserId, setSpaceUserId] = useState<string | null>(null);
   const [spaceReady, setSpaceReady] = useState(false);
-  const [email, setEmail] = useState("");
   const [spaceName, setSpaceName] = useState("");
   const [inviteInput, setInviteInput] = useState("");
   const [inviteToken, setInviteToken] = useState("");
   const [busy, setBusy] = useState(false);
-  const [emailCooldown, setEmailCooldown] = useState(0);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const t = messages[locale];
@@ -94,35 +92,15 @@ export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange }: {
     if (authReady && spaceReady) onSpaceChange(space?.id ?? null);
   }, [authReady, spaceReady, space?.id, onSpaceChange]);
 
-  useEffect(() => {
-    if (emailCooldown <= 0) return;
-    const timer = window.setInterval(() => {
-      setEmailCooldown((seconds) => Math.max(0, seconds - 1));
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [emailCooldown]);
-
-  async function sendLink(event: React.FormEvent) {
-    event.preventDefault();
+  async function signInWithGoogle() {
     if (!supabase) return;
     setBusy(true); setError(""); setNotice("");
-    const { error: authError } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: { emailRedirectTo: window.location.href },
+    const { error: authError } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin },
     });
     setBusy(false);
-    if (authError) {
-      if (authError.status === 429 || authError.code === "over_email_send_rate_limit") {
-        const wait = Number(authError.message.match(/(\d+) seconds?/)?.[1] ?? 60);
-        setEmailCooldown(wait);
-        setError(t.emailRateLimited);
-      } else {
-        setError(t.signInError);
-      }
-    } else {
-      setEmailCooldown(60);
-      setNotice(t.checkEmail);
-    }
+    if (authError) setError(t.signInError);
   }
 
   async function createSpace(event: React.FormEvent) {
@@ -181,13 +159,10 @@ export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange }: {
   if (!user) return <main className="gate-shell">
     <header className="topbar"><div className="brand"><Heart size={21} fill="currentColor" />{t.brand}</div>{languageControl}</header>
     <section className="gate-content">
-      <div className="gate-heading"><Mail size={27} /><h1>{t.signInTitle}</h1><p>{t.signInBody}</p></div>
-      <form className="gate-form" onSubmit={sendLink}>
-        <label>{t.email}<input required type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-        <button className="primary" disabled={busy || emailCooldown > 0} type="submit">
-          {emailCooldown > 0 ? t.resendIn.replace("{seconds}", String(emailCooldown)) : t.sendLink}<ArrowRight size={16} />
-        </button>
-      </form>
+      <div className="gate-heading"><LogIn size={27} /><h1>{t.signInTitle}</h1><p>{t.signInBody}</p></div>
+      <button className="primary google-sign-in" disabled={busy} type="button" onClick={signInWithGoogle}>
+        {t.continueWithGoogle}<ArrowRight size={16} />
+      </button>
       {notice && <p className="gate-notice" role="status">{notice}</p>}
       {error && <p className="form-error" role="alert">{error}</p>}
     </section>
