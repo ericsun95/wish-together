@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { ArrowUpRight, Check, Heart, Link2, ListPlus, MapPin, Palette, Pencil, Plus, Trash2, X } from "lucide-react";
 import { SpaceGate } from "@/components/space-gate";
 import { Locale, messages } from "@/lib/messages";
@@ -126,6 +126,9 @@ export default function Home() {
 
   const t = messages[locale];
   const visible = wishes.filter((wish) => wish.done === (view === "done"));
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+  const themeImage = (selected: Theme) => selected === "clean" ? undefined : `url("${basePath}/themes/${selected}.webp")`;
+  const themeStyle = { "--theme-image": themeImage(theme) } as CSSProperties;
 
   function resetEditor() {
     setTitle(""); setUrl(""); setAddress(""); setCategory(""); setNote("");
@@ -224,7 +227,7 @@ export default function Home() {
 
   return (
     <SpaceGate locale={locale} onLocaleChange={changeLocale} onSpaceChange={changeSpace}>
-    <main className="app-shell" data-theme={theme}>
+    <main className="app-shell" data-theme={theme} style={themeStyle}>
       <header className="topbar">
         <div className="brand"><Heart size={21} fill="currentColor" strokeWidth={1.5} /><span>{t.brand}</span></div>
         <div className="topbar-actions">
@@ -308,7 +311,7 @@ export default function Home() {
           <div className="dialog-head"><div><h2 id="appearance-title">{t.appearanceTitle}</h2><p>{t.appearanceBody}</p></div><button type="button" className="icon-button" aria-label={t.cancel} onClick={() => setAppearanceOpen(false)}><X size={20} /></button></div>
           <div className="theme-grid">
             {THEMES.map((option) => <button type="button" key={option} className="theme-option" data-theme-option={option} aria-pressed={theme === option} onClick={() => void chooseTheme(option)}>
-              <span className="theme-preview" />
+              <span className="theme-preview" style={{ backgroundImage: themeImage(option) }} />
               <span>{option === "clean" ? t.themeClean : option === "coast" ? t.themeCoast : option === "city" ? t.themeCity : t.themeGarden}</span>
               {theme === option && <Check size={16} />}
             </button>)}
