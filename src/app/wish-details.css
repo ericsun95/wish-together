@@ -1,5 +1,12 @@
 .wish-meta { display: flex; align-items: center; gap: 5px; }
 .wish-category { display: inline-block; margin-top: 5px; color: var(--accent); font-size: 12px; font-weight: 700; }
+.wish-status { display: inline-block; margin: 5px 0 0 8px; color: #3f756d; font-size: 12px; font-weight: 700; }
+.completion-note { padding-left: 9px; border-left: 2px solid var(--accent); }
+.status-editor { margin: 0; padding: 0; border: 0; }
+.status-editor legend { margin-bottom: 7px; font-size: 12px; font-weight: 700; }
+.segmented-control { display: grid; grid-template-columns: repeat(3, 1fr); padding: 3px; border-radius: 6px; background: color-mix(in srgb, var(--surface) 65%, #eef1ee); }
+.segmented-control button { min-width: 0; padding: 8px 6px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); font-size: 12px; font-weight: 700; }
+.segmented-control button[aria-pressed=true] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px #1a242018; }
 .wish-checklist { display: grid; gap: 7px; margin-top: 12px; }
 .wish-checklist label { display: flex; align-items: flex-start; gap: 8px; color: var(--ink); font-size: 13px; font-weight: 400; }
 .wish-checklist input { margin-top: 1px; accent-color: var(--accent); }
