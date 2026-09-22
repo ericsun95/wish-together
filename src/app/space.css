@@ -27,3 +27,12 @@
   .space-strip-actions { gap: 12px; }
   .invite-strip, .space-feedback { padding-left: 18px; padding-right: 18px; }
 }
+
+.member-strip { display: grid; gap: 9px; padding: 12px max(24px, calc((100vw - 1040px)/2)); background: #f7f9f7; color: #285d50; font-size: 12px; }
+.signed-in-account { overflow-wrap: anywhere; }
+.member-list { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.member-chip { display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px; background: #fff; border: 1px solid #d9dfda; border-radius: 20px; }
+.member-chip > span { color: #617269; }
+.presence-dot { width: 7px; height: 7px; border-radius: 50%; background: #929d96; }
+.presence-dot.online { background: #28835a; }
+@media (max-width: 600px) { .member-strip { padding-left: 18px; padding-right: 18px; } }
