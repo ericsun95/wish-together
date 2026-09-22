@@ -20,7 +20,7 @@ try {
     create role authenticated;
     create role anon;
     create schema auth;
-    create table auth.users (id uuid primary key);
+    create table auth.users (id uuid primary key, raw_user_meta_data jsonb default '{}'::jsonb);
     create function auth.uid() returns uuid language sql stable
       as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
     insert into auth.users (id) values ('${owner}'), ('${partner}'), ('${outsider}');
@@ -71,7 +71,20 @@ try {
   assert.equal((await db.query("select count(*)::int as count from public.wish_checklist_items")).rows[0].count, 1);
   await db.query("update public.wish_checklist_items set completed = true where wish_id = $1", [wishId]);
 
+  await as(owner);
+  await db.query("update public.space_members set display_name = 'Eric', avatar_url = 'https://example.com/avatar.jpg' where user_id = $1", [owner]);
+  await db.query("update public.couple_spaces set background_photo = 'data:image/jpeg;base64,YQ==' where id = $1", [spaceId]);
+  await rejects("update public.space_members set role = 'partner' where user_id = $1", [owner]);
+  await rejects("update public.couple_spaces set background_photo = 'https://example.com/photo' where id = $1", [spaceId]);
+  await as(partner);
+  assert.equal((await db.query("select display_name from public.space_members where user_id = $1", [owner])).rows[0].display_name, 'Eric');
+  await db.query("update public.space_members set display_name = 'Not Eric' where user_id = $1", [owner]);
+  assert.equal((await db.query("select display_name from public.space_members where user_id = $1", [owner])).rows[0].display_name, 'Eric');
+  assert.equal((await db.query("select background_photo from public.couple_spaces where id = $1", [spaceId])).rows[0].background_photo, 'data:image/jpeg;base64,YQ==');
+
   await as(outsider);
+  assert.equal((await db.query("select count(*)::int as count from public.space_members")).rows[0].count, 0);
+  await db.query("update public.couple_spaces set background_photo = null where id = $1", [spaceId]);
   assert.equal((await db.query("select count(*)::int as count from public.wishes")).rows[0].count, 0);
   assert.equal((await db.query("select count(*)::int as count from public.checkins")).rows[0].count, 0);
   assert.equal((await db.query("select count(*)::int as count from public.wish_checklist_items")).rows[0].count, 0);
@@ -80,6 +93,10 @@ try {
   await rejects("insert into public.checkins (space_id, wish_id, created_by) values ($1, $2, $3)", [spaceId, wishId, outsider]);
   await rejects("insert into public.wish_checklist_items (wish_id, space_id, label) values ($1, $2, $3)", [wishId, spaceId, "No"]);
 
+  await as(owner);
+  assert.equal((await db.query("select background_photo from public.couple_spaces where id = $1", [spaceId])).rows[0].background_photo, 'data:image/jpeg;base64,YQ==');
+  await rejects("update public.couple_spaces set background_photo = $1 where id = $2", ['data:image/jpeg;base64,' + 'A'.repeat(1500000), spaceId]);
+  await rejects("update public.space_members set avatar_url = 'javascript:alert(1)' where user_id = $1", [owner]);
   await db.exec("reset role");
   console.log("Database permissions and invitation flow passed.");
 } finally {
