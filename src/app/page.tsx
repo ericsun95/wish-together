@@ -1,15 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import { ArrowUpRight, Check, Heart, Link2, ListPlus, MapPin, Palette, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Check, Heart, LayoutDashboard, Link2, ListPlus, MapPin, Palette, Pencil, Plus, Trash2, X } from "lucide-react";
 import { SpaceGate } from "@/components/space-gate";
 import { Locale, messages } from "@/lib/messages";
 import { supabase } from "@/lib/supabase";
 
 type ChecklistItem = { id: string; label: string; completed: boolean; position: number };
 type WishStatus = "wanted" | "planned" | "done";
-type Wish = { id: string; title: string; note: string; url: string; address: string; category: string; status: WishStatus; plannedDate: string; completionNote: string; checklist: ChecklistItem[] };
-type View = "wishes" | "done";
+type Wish = { id: string; title: string; note: string; url: string; address: string; category: string; status: WishStatus; plannedDate: string; completionNote: string; createdAt: string; checklist: ChecklistItem[] };
+type View = "wishes" | "done" | "dashboard";
 type Theme = "clean" | "coast" | "city" | "garden";
 
 const WISHES_KEY = "wish-together:wishes";
@@ -41,6 +41,7 @@ function readWishes(key: string): Wish[] {
       status: wish.status === "planned" || wish.status === "done" ? wish.status : wish.done === true ? "done" : "wanted",
       plannedDate: typeof wish.plannedDate === "string" ? wish.plannedDate : "",
       completionNote: typeof wish.completionNote === "string" ? wish.completionNote : "",
+      createdAt: typeof wish.createdAt === "string" ? wish.createdAt : "",
       checklist: Array.isArray(wish.checklist) ? wish.checklist : [],
     })) as Wish[];
   } catch {
@@ -93,7 +94,7 @@ export default function Home() {
     async function loadWishes() {
       setError("");
       const { data: rows, error: wishError } = await client.from("wishes")
-        .select("id, title, note, url, address, category, status, planned_date, completed_note").eq("space_id", spaceId).order("created_at", { ascending: false });
+        .select("id, title, note, url, address, category, status, planned_date, completed_note, created_at").eq("space_id", spaceId).order("created_at", { ascending: false });
       if (wishError || !rows) return setError(messages[locale].wishLoadError);
       const ids = rows.map((row) => row.id);
       const { data: items, error: itemError } = ids.length
@@ -102,7 +103,7 @@ export default function Home() {
       if (itemError) return setError(messages[locale].wishLoadError);
       setWishes(rows.map((row) => ({
         id: row.id, title: row.title, note: row.note, url: row.url ?? "", address: row.address ?? "", category: row.category ?? "",
-        status: row.status as WishStatus, plannedDate: row.planned_date ?? "", completionNote: row.completed_note ?? "",
+        status: row.status as WishStatus, plannedDate: row.planned_date ?? "", completionNote: row.completed_note ?? "", createdAt: row.created_at,
         checklist: (items ?? []).filter((item) => item.wish_id === row.id),
       })));
     }
@@ -132,7 +133,13 @@ export default function Home() {
   }
 
   const t = messages[locale];
-  const visible = wishes.filter((wish) => (wish.status === "done") === (view === "done"));
+  const visible = wishes.filter((wish) => view !== "dashboard" && (wish.status === "done") === (view === "done"));
+  const checklistTotal = wishes.reduce((total, wish) => total + wish.checklist.length, 0);
+  const checklistDone = wishes.reduce((total, wish) => total + wish.checklist.filter((item) => item.completed).length, 0);
+  const categories = Object.entries(wishes.reduce<Record<string, number>>((all, wish) => {
+    if (wish.category) all[wish.category] = (all[wish.category] ?? 0) + 1;
+    return all;
+  }, {})).sort((a, b) => b[1] - a[1]);
   const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
   const themeImage = (selected: Theme) => selected === "clean" ? undefined : `url("${basePath}/themes/${selected}.webp")`;
   const themeStyle = { "--theme-image": themeImage(theme) } as CSSProperties;
@@ -207,7 +214,7 @@ export default function Home() {
         const { error: itemError } = await supabase.from("wish_checklist_items").insert(items);
         if (itemError) { await supabase.from("wishes").delete().eq("id", data.id); return setError(t.wishSaveError); }
       }
-      newWish = { id: data.id, title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), category: category.trim(), status,
+      newWish = { id: data.id, title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), category: category.trim(), status, createdAt: new Date().toISOString(),
         plannedDate: status === "planned" ? plannedDate : "", completionNote: status === "done" ? completionNote.trim() : "",
         checklist: draft.map((item, position) => ({ ...item, position })) };
     } else {
@@ -216,7 +223,7 @@ export default function Home() {
         resetEditor();
         return;
       }
-      newWish = { id: crypto.randomUUID(), title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), category: category.trim(), status, plannedDate: status === "planned" ? plannedDate : "", completionNote: status === "done" ? completionNote.trim() : "", checklist: draft };
+      newWish = { id: crypto.randomUUID(), title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), category: category.trim(), status, plannedDate: status === "planned" ? plannedDate : "", completionNote: status === "done" ? completionNote.trim() : "", createdAt: new Date().toISOString(), checklist: draft };
     }
     setWishes((current) => [newWish, ...current]);
     resetEditor();
@@ -258,11 +265,24 @@ export default function Home() {
           <div className="tabs" role="tablist">
             <button role="tab" aria-selected={view === "wishes"} onClick={() => setView("wishes")}>{t.wishes}<span>{wishes.filter((w) => w.status !== "done").length}</span></button>
             <button role="tab" aria-selected={view === "done"} onClick={() => setView("done")}>{t.done}<span>{wishes.filter((w) => w.status === "done").length}</span></button>
+            <button role="tab" aria-selected={view === "dashboard"} onClick={() => setView("dashboard")}><LayoutDashboard size={15} />{t.dashboard}</button>
           </div>
           <button className="primary" type="button" onClick={openNewWish}><Plus size={18} />{t.add}</button>
         </div>
 
-        {visible.length === 0 ? (
+        {view === "dashboard" ? <div className="dashboard-view">
+          <div className="metric-grid">
+            <div><strong>{wishes.length}</strong><span>{t.totalWishes}</span></div>
+            <div><strong>{wishes.filter((wish) => wish.status === "wanted").length}</strong><span>{t.wantedStatus}</span></div>
+            <div><strong>{wishes.filter((wish) => wish.status === "planned").length}</strong><span>{t.plannedCount}</span></div>
+            <div><strong>{wishes.filter((wish) => wish.status === "done").length}</strong><span>{t.completedCount}</span></div>
+          </div>
+          <div className="dashboard-sections">
+            <section><h2>{t.checklistProgress}</h2><div className="progress-row"><strong>{checklistDone}/{checklistTotal}</strong><div><span style={{ width: `${checklistTotal ? checklistDone / checklistTotal * 100 : 0}%` }} /></div></div></section>
+            <section><h2>{t.categoryBreakdown}</h2>{categories.length ? <div className="category-summary">{categories.map(([name, count]) => <div key={name}><span>{name}</span><strong>{count}</strong></div>)}</div> : <p>{t.noCategories}</p>}</section>
+            <section className="recent-summary"><h2>{t.recentWishes}</h2>{wishes.length ? wishes.slice(0, 5).map((wish) => <div key={wish.id}><Heart size={14} /><span>{wish.title}</span><small>{wish.status === "wanted" ? t.wantedStatus : wish.status === "planned" ? t.plannedStatus : t.doneStatus}</small></div>) : <p>{t.noRecentWishes}</p>}</section>
+          </div>
+        </div> : visible.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon"><Heart size={25} /></div>
             <h1>{view === "done" ? t.completedEmpty : t.emptyTitle}</h1>
