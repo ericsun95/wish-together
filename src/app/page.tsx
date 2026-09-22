@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import { ArrowUpRight, Check, Heart, LayoutDashboard, Link2, ListPlus, Map, MapPin, Palette, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Check, Filter, Heart, LayoutDashboard, Link2, ListPlus, Map, MapPin, Palette, Pencil, Plus, Trash2, X } from "lucide-react";
 import { SpaceGate } from "@/components/space-gate";
 import { Locale, messages } from "@/lib/messages";
 import { supabase } from "@/lib/supabase";
@@ -55,6 +55,8 @@ export default function Home() {
   const [spaceId, setSpaceId] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [view, setView] = useState<View>("wishes");
+  const [statusFilter, setStatusFilter] = useState<"all" | WishStatus>("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const [mapWishId, setMapWishId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
@@ -134,7 +136,12 @@ export default function Home() {
   }
 
   const t = messages[locale];
-  const visible = wishes.filter((wish) => view !== "dashboard" && view !== "map" && (wish.status === "done") === (view === "done"));
+  const visible = wishes.filter((wish) => {
+    if (view === "dashboard" || view === "map") return false;
+    if ((wish.status === "done") !== (view === "done")) return false;
+    if (statusFilter !== "all" && wish.status !== statusFilter) return false;
+    return categoryFilter === "all" || wish.category === categoryFilter;
+  });
   const mappedWishes = wishes.filter((wish) => wish.address);
   const mapWish = mappedWishes.find((wish) => wish.id === mapWishId) ?? mappedWishes[0];
   const checklistTotal = wishes.reduce((total, wish) => total + wish.checklist.length, 0);
@@ -143,6 +150,8 @@ export default function Home() {
     if (wish.category) all[wish.category] = (all[wish.category] ?? 0) + 1;
     return all;
   }, {})).sort((a, b) => b[1] - a[1]);
+  const categoryNames = categories.map(([name]) => name);
+  const hasFilters = categoryFilter !== "all" || statusFilter !== "all";
   const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
   const themeImage = (selected: Theme) => selected === "clean" ? undefined : `url("${basePath}/themes/${selected}.webp")`;
   const themeStyle = { "--theme-image": themeImage(theme) } as CSSProperties;
@@ -266,13 +275,27 @@ export default function Home() {
       <section className="workspace">
         <div className="section-head">
           <div className="tabs" role="tablist">
-            <button role="tab" aria-selected={view === "wishes"} onClick={() => setView("wishes")}>{t.wishes}<span>{wishes.filter((w) => w.status !== "done").length}</span></button>
-            <button role="tab" aria-selected={view === "done"} onClick={() => setView("done")}>{t.done}<span>{wishes.filter((w) => w.status === "done").length}</span></button>
+            <button role="tab" aria-selected={view === "wishes"} onClick={() => { setView("wishes"); setStatusFilter("all"); }}>{t.wishes}<span>{wishes.filter((w) => w.status !== "done").length}</span></button>
+            <button role="tab" aria-selected={view === "done"} onClick={() => { setView("done"); setStatusFilter("all"); }}>{t.done}<span>{wishes.filter((w) => w.status === "done").length}</span></button>
             <button role="tab" aria-selected={view === "dashboard"} onClick={() => setView("dashboard")}><LayoutDashboard size={15} />{t.dashboard}</button>
             <button role="tab" aria-selected={view === "map"} onClick={() => setView("map")}><Map size={15} />{t.map}</button>
           </div>
           <button className="primary" type="button" onClick={openNewWish}><Plus size={18} />{t.add}</button>
         </div>
+
+        {(view === "wishes" || view === "done") && wishes.length > 0 && <div className="filter-bar" aria-label={t.filters}>
+          <Filter size={16} aria-hidden="true" />
+          {view === "wishes" && <label><span>{t.status}</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "all" | WishStatus)}>
+            <option value="all">{t.allStatuses}</option>
+            <option value="wanted">{t.wantedStatus}</option>
+            <option value="planned">{t.plannedStatus}</option>
+          </select></label>}
+          {categoryNames.length > 0 && <label><span>{t.category}</span><select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+            <option value="all">{t.allCategories}</option>
+            {categoryNames.map((name) => <option key={name} value={name}>{name}</option>)}
+          </select></label>}
+          {hasFilters && <button type="button" className="clear-filters" onClick={() => { setStatusFilter("all"); setCategoryFilter("all"); }}><X size={14} />{t.clearFilters}</button>}
+        </div>}
 
         {view === "map" ? <div className="map-view">
           <div className="map-heading"><h1>{t.mapTitle}</h1><p>{mapWish ? mapWish.address : t.mapEmpty}</p></div>
@@ -295,9 +318,9 @@ export default function Home() {
         </div> : visible.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon"><Heart size={25} /></div>
-            <h1>{view === "done" ? t.completedEmpty : t.emptyTitle}</h1>
-            {view === "wishes" && <p>{t.emptyBody}</p>}
-            {view === "wishes" && <button type="button" className="text-action" onClick={openNewWish}><Plus size={16} />{t.add}</button>}
+            <h1>{hasFilters ? t.noFilterResults : view === "done" ? t.completedEmpty : t.emptyTitle}</h1>
+            {hasFilters ? <button type="button" className="text-action" onClick={() => { setStatusFilter("all"); setCategoryFilter("all"); }}>{t.clearFilters}</button> : view === "wishes" && <p>{t.emptyBody}</p>}
+            {!hasFilters && view === "wishes" && <button type="button" className="text-action" onClick={openNewWish}><Plus size={16} />{t.add}</button>}
           </div>
         ) : (
           <div className="wish-list">
