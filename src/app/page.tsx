@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import { ArrowUpRight, Check, Heart, LayoutDashboard, Link2, ListPlus, MapPin, Palette, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Check, Heart, LayoutDashboard, Link2, ListPlus, Map, MapPin, Palette, Pencil, Plus, Trash2, X } from "lucide-react";
 import { SpaceGate } from "@/components/space-gate";
 import { Locale, messages } from "@/lib/messages";
 import { supabase } from "@/lib/supabase";
@@ -9,7 +9,7 @@ import { supabase } from "@/lib/supabase";
 type ChecklistItem = { id: string; label: string; completed: boolean; position: number };
 type WishStatus = "wanted" | "planned" | "done";
 type Wish = { id: string; title: string; note: string; url: string; address: string; category: string; status: WishStatus; plannedDate: string; completionNote: string; createdAt: string; checklist: ChecklistItem[] };
-type View = "wishes" | "done" | "dashboard";
+type View = "wishes" | "done" | "dashboard" | "map";
 type Theme = "clean" | "coast" | "city" | "garden";
 
 const WISHES_KEY = "wish-together:wishes";
@@ -55,6 +55,7 @@ export default function Home() {
   const [spaceId, setSpaceId] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [view, setView] = useState<View>("wishes");
+  const [mapWishId, setMapWishId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>("clean");
@@ -133,7 +134,9 @@ export default function Home() {
   }
 
   const t = messages[locale];
-  const visible = wishes.filter((wish) => view !== "dashboard" && (wish.status === "done") === (view === "done"));
+  const visible = wishes.filter((wish) => view !== "dashboard" && view !== "map" && (wish.status === "done") === (view === "done"));
+  const mappedWishes = wishes.filter((wish) => wish.address);
+  const mapWish = mappedWishes.find((wish) => wish.id === mapWishId) ?? mappedWishes[0];
   const checklistTotal = wishes.reduce((total, wish) => total + wish.checklist.length, 0);
   const checklistDone = wishes.reduce((total, wish) => total + wish.checklist.filter((item) => item.completed).length, 0);
   const categories = Object.entries(wishes.reduce<Record<string, number>>((all, wish) => {
@@ -266,11 +269,18 @@ export default function Home() {
             <button role="tab" aria-selected={view === "wishes"} onClick={() => setView("wishes")}>{t.wishes}<span>{wishes.filter((w) => w.status !== "done").length}</span></button>
             <button role="tab" aria-selected={view === "done"} onClick={() => setView("done")}>{t.done}<span>{wishes.filter((w) => w.status === "done").length}</span></button>
             <button role="tab" aria-selected={view === "dashboard"} onClick={() => setView("dashboard")}><LayoutDashboard size={15} />{t.dashboard}</button>
+            <button role="tab" aria-selected={view === "map"} onClick={() => setView("map")}><Map size={15} />{t.map}</button>
           </div>
           <button className="primary" type="button" onClick={openNewWish}><Plus size={18} />{t.add}</button>
         </div>
 
-        {view === "dashboard" ? <div className="dashboard-view">
+        {view === "map" ? <div className="map-view">
+          <div className="map-heading"><h1>{t.mapTitle}</h1><p>{mapWish ? mapWish.address : t.mapEmpty}</p></div>
+          {mapWish ? <div className="map-layout">
+            <div className="map-places" role="list">{mappedWishes.map((wish) => <button type="button" role="listitem" key={wish.id} aria-pressed={wish.id === mapWish.id} onClick={() => setMapWishId(wish.id)}><MapPin size={16} /><span><strong>{wish.title}</strong><small>{wish.address}</small></span></button>)}</div>
+            <div className="map-frame"><iframe title={`${t.mapTitle}: ${mapWish.title}`} src={`https://www.google.com/maps?q=${encodeURIComponent(mapWish.address)}&output=embed`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" /><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapWish.address)}`} target="_blank" rel="noopener noreferrer">{t.openInMaps}<ArrowUpRight size={14} /></a></div>
+          </div> : <div className="map-empty"><MapPin size={28} /><p>{t.mapEmpty}</p></div>}
+        </div> : view === "dashboard" ? <div className="dashboard-view">
           <div className="metric-grid">
             <div><strong>{wishes.length}</strong><span>{t.totalWishes}</span></div>
             <div><strong>{wishes.filter((wish) => wish.status === "wanted").length}</strong><span>{t.wantedStatus}</span></div>
