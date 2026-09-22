@@ -329,7 +329,7 @@ export default function Home() {
   }
 
   return (
-    <SpaceGate backgroundPhoto={backgroundPhoto} locale={locale} onLocaleChange={changeLocale} onSpaceChange={changeSpace}>
+    <SpaceGate theme={theme} backgroundPhoto={backgroundPhoto} locale={locale} onLocaleChange={changeLocale} onSpaceChange={changeSpace}>
     <main className="app-shell" data-theme={theme} style={themeStyle}>
       <header className="topbar">
         <div className="brand"><Heart size={21} fill="currentColor" strokeWidth={1.5} /><span>{t.brand}</span></div>

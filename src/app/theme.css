@@ -67,9 +67,6 @@
   .theme-option { grid-template-columns: 68px minmax(0, 1fr) 20px; }
   .theme-preview { width: 68px; }
 }
-.couple-space[data-photo="true"] .app-shell { background: transparent; min-height: 100vh; --ink: #384239; --muted: #687368; --line: #dce3d9; --surface: #fffefbf2; --back: #faf9f5; --accent: #b5786e; }
-.couple-space[data-photo="true"] .app-shell > .topbar { border-radius: 16px; }
-.couple-space[data-photo="true"] .app-shell .workspace { background: #fffefbe8; border-radius: 20px; }
 .photo-upload-panel { background: #f7f3ee; border: 1px dashed #d5c6ba; border-radius: 14px; padding: 22px; margin-bottom: 24px; color: #615247; }
 .photo-upload-panel h3 { font-size: 16px; margin: 10px 0 7px; }
 .photo-upload-panel p { font-size: 12px; line-height: 1.6; margin: 0 0 16px; }
@@ -83,13 +80,42 @@
 .theme-option:disabled, .photo-upload-label[aria-disabled="true"] { opacity: .55; cursor: wait; }
 .appearance-dialog { max-height: calc(100dvh - 32px); overflow-y: auto; }
 .dialog .photo-upload-label { display: inline-flex; }
-.couple-space[data-photo="true"] { padding: 0 16px 24px; }
-.couple-space[data-photo="true"] .app-shell > .topbar { max-width: 1040px; margin: 18px auto; padding: 0 24px; }
-.couple-space[data-photo="true"] .app-shell .workspace { margin: 0 auto; background: #fffefbdb; }
-.couple-space[data-photo="true"] .couple-header { background: #fffaf3d6; }
+
+/* One backdrop and palette, from the couple portraits to the last wish. */
+.couple-space {
+  --ink: #54463f; --muted: #897970; --line: #dfd3c9;
+  --surface: #fffaf3ed; --back: #faf7f2; --accent: #b5786e; --accent-light: #f5e6df;
+  --space-tint: #f8f1e944; --space-panel: #fffaf3d9;
+  padding: 0 16px 24px;
+  color: var(--ink);
+  background: linear-gradient(var(--space-tint), var(--space-tint)), var(--couple-photo) center / cover fixed;
+  background-color: var(--back);
+}
+.couple-space[data-theme="coast"] { --ink: #354f57; --muted: #607e85; --accent: #507e89; --accent-light: #e0edf0; --line: #cbdde0; --surface: #f5fcfbed; --space-panel: #f4fcfbd9; --space-tint: #e9f4f333; }
+.couple-space[data-theme="garden"] { --ink: #3e503a; --muted: #6a7e61; --accent: #738564; --accent-light: #e6eddd; --line: #d0dbc9; --surface: #f9fcf3ed; --space-panel: #f7fbeed9; --space-tint: #eff5e833; }
+.couple-space[data-theme="city"] { --ink: #f4e9df; --muted: #c1b6ad; --accent: #e0a596; --accent-light: #533e3b; --line: #ffffff2b; --surface: #253039f2; --back: #172127; --space-panel: #253039dd; --space-tint: #10191f55; }
+.couple-space .app-shell {
+  --ink: inherit; --muted: inherit; --line: inherit; --surface: inherit;
+  --back: inherit; --accent: inherit; --accent-light: inherit;
+  background: transparent;
+}
+.couple-space .couple-header, .couple-space[data-photo="true"] .couple-header {
+  background: var(--space-panel); color: var(--ink); border-radius: 0 0 24px 24px; backdrop-filter: blur(12px);
+}
+.couple-space .app-shell > .topbar { max-width: 1040px; margin: 18px auto; padding: 0 24px; border: 1px solid var(--line); border-radius: 16px; background: var(--space-panel); }
+.couple-space .app-shell .workspace { margin: 0 auto; background: var(--space-panel); border: 1px solid var(--line); border-radius: 20px; }
+.couple-space .couple-toolbar > span, .couple-space .couple-heart { color: var(--accent); }
+.couple-space .couple-toolbar button, .couple-space .partner-status, .couple-space .couple-center p, .couple-space .couple-caption { color: var(--muted); }
+.couple-space .couple-heart span { background: var(--line); }
+.couple-space .partner-avatar { background: var(--accent-light); color: var(--accent); border-color: var(--surface); }
+.couple-space .partner-partner .partner-avatar { background: color-mix(in srgb, var(--accent-light) 70%, var(--surface)); }
+.couple-space .storage-note { color: var(--muted); }
+.couple-space .photo-upload-panel { background: var(--accent-light); border-color: var(--line); color: var(--ink); }
+.couple-space .photo-upload-panel small { color: var(--muted); }
+.couple-space .app-shell .dialog input, .couple-space .app-shell .dialog textarea, .couple-space .app-shell .secondary { background: var(--surface); border-color: var(--line); color: var(--ink); }
 @media(max-width:600px) {
-  .couple-space[data-photo="true"] { padding: 0 10px 16px; }
-  .couple-space[data-photo="true"] .app-shell > .topbar { padding: 0 12px; margin: 12px auto; }
-  .couple-space[data-photo="true"] .brand { font-size: 16px; }
-  .couple-space[data-photo="true"] .tabs { gap: 10px; }
+  .couple-space { padding: 0 10px 16px; }
+  .couple-space .app-shell > .topbar { padding: 0 12px; margin: 12px auto; }
+  .couple-space .brand { font-size: 16px; }
+  .couple-space .tabs { gap: 10px; }
 }
