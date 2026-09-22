@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import { ArrowUpRight, Check, Filter, Heart, LayoutDashboard, Link2, ListPlus, Map, MapPin, Palette, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Check, Filter, Heart, LayoutDashboard, Link2, ListPlus, Map, MapPin, Palette, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { SpaceGate } from "@/components/space-gate";
+import { getGoogleMapsUrl, getMapQuery, getMapSource } from "@/lib/maps";
 import { Locale, messages } from "@/lib/messages";
 import { supabase } from "@/lib/supabase";
 
@@ -58,6 +59,8 @@ export default function Home() {
   const [statusFilter, setStatusFilter] = useState<"all" | WishStatus>("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [mapWishId, setMapWishId] = useState<string | null>(null);
+  const [mapSearch, setMapSearch] = useState("");
+  const [mapSearchQuery, setMapSearchQuery] = useState("");
   const [adding, setAdding] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>("clean");
@@ -142,8 +145,10 @@ export default function Home() {
     if (statusFilter !== "all" && wish.status !== statusFilter) return false;
     return categoryFilter === "all" || wish.category === categoryFilter;
   });
-  const mappedWishes = wishes.filter((wish) => wish.address);
+  const mappedWishes = wishes.filter((wish) => getMapSource(wish.address, wish.url));
   const mapWish = mappedWishes.find((wish) => wish.id === mapWishId) ?? mappedWishes[0];
+  const mapSource = mapWish ? getMapSource(mapWish.address, mapWish.url) : "";
+  const activeMapQuery = mapSearchQuery || (mapWish ? getMapQuery(mapSource, mapWish.title) : "");
   const checklistTotal = wishes.reduce((total, wish) => total + wish.checklist.length, 0);
   const checklistDone = wishes.reduce((total, wish) => total + wish.checklist.filter((item) => item.completed).length, 0);
   const categories = Object.entries(wishes.reduce<Record<string, number>>((all, wish) => {
@@ -298,10 +303,16 @@ export default function Home() {
         </div>}
 
         {view === "map" ? <div className="map-view">
-          <div className="map-heading"><h1>{t.mapTitle}</h1><p>{mapWish ? mapWish.address : t.mapEmpty}</p></div>
-          {mapWish ? <div className="map-layout">
-            <div className="map-places" role="list">{mappedWishes.map((wish) => <button type="button" role="listitem" key={wish.id} aria-pressed={wish.id === mapWish.id} onClick={() => setMapWishId(wish.id)}><MapPin size={16} /><span><strong>{wish.title}</strong><small>{wish.address}</small></span></button>)}</div>
-            <div className="map-frame"><iframe title={`${t.mapTitle}: ${mapWish.title}`} src={`https://www.google.com/maps?q=${encodeURIComponent(mapWish.address)}&output=embed`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" /><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapWish.address)}`} target="_blank" rel="noopener noreferrer">{t.openInMaps}<ArrowUpRight size={14} /></a></div>
+          <div className="map-heading"><h1>{t.mapTitle}</h1><p>{mapWish ? mapSource : t.mapEmpty}</p></div>
+          <form className="map-search" onSubmit={(event) => { event.preventDefault(); setMapSearchQuery(getMapQuery(mapSearch)); }}>
+            <Search size={17} aria-hidden="true" />
+            <label><span>{t.mapSearch}</span><input value={mapSearch} onChange={(event) => setMapSearch(event.target.value)} placeholder={t.mapSearchHint} /></label>
+            <button className="secondary" type="submit" disabled={!mapSearch.trim()}>{t.mapSearchAction}</button>
+            {mapSearchQuery && <button className="icon-button" type="button" aria-label={t.clearFilters} title={t.clearFilters} onClick={() => { setMapSearch(""); setMapSearchQuery(""); }}><X size={17} /></button>}
+          </form>
+          {activeMapQuery ? <div className="map-layout">
+            <div className="map-places" role="list">{mappedWishes.map((wish) => { const source = getMapSource(wish.address, wish.url); return <button type="button" role="listitem" key={wish.id} aria-pressed={!mapSearchQuery && wish.id === mapWish?.id} onClick={() => { setMapWishId(wish.id); setMapSearch(""); setMapSearchQuery(""); }}><MapPin size={16} /><span><strong>{wish.title}</strong><small>{source}</small></span></button>; })}</div>
+            <div className="map-frame"><iframe title={`${t.mapTitle}: ${mapSearchQuery || mapWish?.title || mapSearch}`} src={`https://www.google.com/maps?q=${encodeURIComponent(activeMapQuery)}&output=embed`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" /><a href={mapSearchQuery ? getGoogleMapsUrl(mapSearchQuery) : getGoogleMapsUrl(mapSource, mapWish?.title)} target="_blank" rel="noopener noreferrer">{t.openInMaps}<ArrowUpRight size={14} /></a></div>
           </div> : <div className="map-empty"><MapPin size={28} /><p>{t.mapEmpty}</p></div>}
         </div> : view === "dashboard" ? <div className="dashboard-view">
           <div className="metric-grid">
@@ -360,7 +371,7 @@ export default function Home() {
           <form onSubmit={saveWish}>
             <label>{t.title}<input autoFocus required value={title} onChange={(e) => { setTitle(e.target.value); setError(""); }} /></label>
             <label>{t.pasteLink} <span className="optional-label">{t.optional}</span><input type="url" value={url} onChange={(e) => { setUrl(e.target.value); setError(""); }} placeholder="https://" /></label>
-            <label>{t.address} <span className="optional-label">{t.optional}</span><input value={address} onChange={(e) => setAddress(e.target.value)} /></label>
+            <label>{t.address} <span className="optional-label">{t.optional}</span><input value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t.addressPlaceholder} /></label>
             <label>{t.category} <span className="optional-label">{t.optional}</span><input value={category} onChange={(e) => setCategory(e.target.value)} /></label>
             <label>{t.note}<textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} /></label>
             <fieldset className="status-editor"><legend>{t.status}</legend><div className="segmented-control">

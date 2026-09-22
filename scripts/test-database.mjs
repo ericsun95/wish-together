@@ -36,6 +36,8 @@ try {
   const spaceId = created.rows[0].id;
   const invited = await db.query("select public.create_space_invitation() as token");
   const revokedToken = invited.rows[0].token;
+  const repeatedInvite = await db.query("select public.create_space_invitation() as token");
+  assert.equal(repeatedInvite.rows[0].token, revokedToken);
   await db.query("select public.revoke_space_invitations()");
   assert.equal((await db.query("select count(*)::int as count from public.couple_spaces")).rows[0].count, 1);
 
