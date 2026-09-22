@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ArrowRight, Copy, Heart, LogIn, LogOut, Plus, RotateCcw, UserRoundPlus } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { messages, type Locale } from "@/lib/messages";
 import { supabase } from "@/lib/supabase";
+
+type Member = { user_id: string; role: string; display_name?: string; avatar_url?: string };
 
 type Space = { id: string; name: string; role: "owner" | "partner" };
 
@@ -18,7 +20,8 @@ function invitationToken(input: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(token) ? token : null;
 }
 
-export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange }: {
+export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange, backgroundPhoto }: {
+  backgroundPhoto?: string | null;
   children: ReactNode;
   locale: Locale;
   onLocaleChange: (locale: Locale) => void;
@@ -35,7 +38,7 @@ export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange }: {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
-  const [members, setMembers] = useState<{ user_id: string; role: string }[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
   const [onlineIds, setOnlineIds] = useState<string[]>([]);
   const [presenceReady, setPresenceReady] = useState(false);
   const [membersError, setMembersError] = useState(false);
@@ -131,12 +134,17 @@ export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange }: {
     setPresenceReady(false);
     async function refreshMembers() {
       const { data, error } = await client.from("space_members")
-        .select("user_id, role").eq("space_id", spaceId).order("joined_at");
+        .select("user_id, role, display_name, avatar_url").eq("space_id", spaceId).order("joined_at");
       if (!active) return;
       setMembersError(Boolean(error));
       if (data) setMembers(data);
     }
-    void refreshMembers();
+    const metadata = user.user_metadata;
+    const displayName = String(metadata.full_name || metadata.name || "").slice(0, 80);
+    const rawAvatar = String(metadata.avatar_url || metadata.picture || "");
+    const avatarUrl = rawAvatar.startsWith("https://") && rawAvatar.length <= 2048 ? rawAvatar : "";
+    void client.from("space_members").update({ display_name: displayName, avatar_url: avatarUrl })
+      .eq("user_id", userId).eq("space_id", spaceId).then(() => refreshMembers());
     const timer = window.setInterval(refreshMembers, 15000);
     window.addEventListener("focus", refreshMembers);
     const channel = client.channel(`space-presence:${spaceId}`, {
@@ -263,31 +271,38 @@ export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange }: {
 
   const inviteUrl = inviteToken ? `${window.location.origin}${window.location.pathname}?invite=${inviteToken}&v=${encodeURIComponent(process.env.NEXT_PUBLIC_APP_VERSION || "latest")}` : "";
   const zh = locale === "zh-CN";
-  return <>
-    <div className="space-strip"><span>{space.name}</span><span className="space-strip-actions">
-      {space.role === "owner" && <button type="button" disabled={busy} onClick={createInvite}><UserRoundPlus size={15} />{t.createInvite}</button>}
-      {space.role === "owner" && <button type="button" disabled={busy} onClick={revokeInvites}><RotateCcw size={15} />{t.revokeInvites}</button>}
-      <button type="button" onClick={() => void supabase?.auth.signOut()}><LogOut size={15} />{t.signOut}</button>
-    </span></div>
-    <div className="member-strip" aria-live="polite">
-      <span className="signed-in-account">{zh ? "已登录" : "Signed in"} · {user.email || user.user_metadata.full_name || (zh ? "我的账号" : "My account")}</span>
-      <div className="member-list">
-        {members.map((member) => {
-          const isMe = member.user_id === user.id;
-          const online = isMe || onlineIds.includes(member.user_id);
-          return <span className="member-chip" key={member.user_id}>
-            <i className={online ? "presence-dot online" : "presence-dot"} aria-hidden="true" />
-            {isMe ? (zh ? "我" : "Me") : (zh ? "另一半" : "Partner")}
-            <span>{online ? (zh ? "在线" : "Online") : presenceReady ? (zh ? "离线" : "Offline") : (zh ? "状态连接中" : "Connecting")}</span>
-          </span>;
-        })}
-        {!membersError && members.length === 1 && <span className="member-chip">{zh ? "等待另一半加入 · 1/2" : "Waiting for your partner · 1/2"}</span>}
-        {members.length === 2 && <span>{zh ? "两人已加入 · 2/2" : "Both joined · 2/2"}</span>}
-        {membersError && <span>{zh ? "成员状态暂时无法加载" : "Member status unavailable"}</span>}
+  function partnerCard(member: Member | undefined, side: "owner" | "partner") {
+    const isMe = member?.user_id === user?.id;
+    const metadata = isMe ? user?.user_metadata : undefined;
+    const name = member?.display_name || metadata?.full_name || metadata?.name || (zh ? (member ? "另一半" : "等你来") : (member ? "My love" : "Your person"));
+    const avatar = member?.avatar_url || metadata?.avatar_url || metadata?.picture;
+    const online = member && (isMe || onlineIds.includes(member.user_id));
+    return <div className={`partner-card partner-${side}`}>
+      <div className="partner-avatar">
+        <span aria-hidden="true">{member ? String(name).slice(0, 1).toUpperCase() : <UserRoundPlus size={28} />}</span>
+        {typeof avatar === "string" && avatar.startsWith("https://") && <img src={avatar} alt={String(name)} referrerPolicy="no-referrer" onError={(event) => { event.currentTarget.style.display = "none"; }} />}
+        {member && <i className={online ? "avatar-status online" : "avatar-status"} aria-hidden="true" />}
       </div>
-    </div>
+      <strong>{name}</strong>
+      <span className="partner-status">{member ? `${isMe ? (zh ? "你 · " : "You · ") : ""}${online ? (zh ? "在线" : "Online") : presenceReady ? (zh ? "暂时离线" : "Offline") : (zh ? "连接中" : "Connecting")}` : (zh ? "留一个位置，给最特别的人" : "A little place, just for you")}</span>
+    </div>;
+  }
+  const displayedMembers = members.length ? members : [{ user_id: user.id, role: space.role }];
+  return <div className="couple-space" data-photo={Boolean(backgroundPhoto)} style={{ "--couple-photo": backgroundPhoto ? `url("${backgroundPhoto}")` : "none" } as CSSProperties}>
+    <section className="couple-header" aria-label={zh ? "我们的情侣空间" : "Our couple space"}>
+      <div className="couple-toolbar"><span><Heart size={14} fill="currentColor" />{zh ? "只属于我们" : "JUST THE TWO OF US"}</span><div className="space-strip-actions">
+        {space.role === "owner" && members.length < 2 && <button type="button" disabled={busy} onClick={createInvite}><UserRoundPlus size={15} />{t.createInvite}</button>}
+        {space.role === "owner" && <button type="button" disabled={busy} onClick={revokeInvites} title={t.revokeInvites}><RotateCcw size={14} />{t.revokeInvites}</button>}
+        <button type="button" title={user.email} onClick={() => void supabase?.auth.signOut()}><LogOut size={14} />{t.signOut}</button>
+      </div></div>
+      <div className="couple-portrait" aria-live="polite">
+        {partnerCard(displayedMembers.find((member) => member.role === "owner"), "owner")}
+        <div className="couple-center"><div className="couple-heart"><span /><Heart size={25} fill="currentColor" /><span /></div><p>{zh ? "我们的故事，慢慢写" : "Our story, one wish at a time"}</p><h1>{space.name}</h1><span className="couple-caption">{membersError ? (zh ? "暂时无法加载另一半的信息" : "Partner details unavailable") : members.length === 2 ? (zh ? "两个人，一个小世界" : "Two hearts. One little world.") : (zh ? "从一个心愿，开始我们的日常" : "Make room for a little magic.")}</span></div>
+        {partnerCard(displayedMembers.find((member) => member.role === "partner"), "partner")}
+      </div>
+    </section>
     {inviteUrl && <div className="invite-strip"><label>{t.inviteLink}<input readOnly value={inviteUrl} onFocus={(event) => event.target.select()} /></label><button type="button" title={t.copyLink} aria-label={t.copyLink} onClick={async () => { try { await navigator.clipboard.writeText(inviteUrl); setNotice(t.linkCopied); } catch { setNotice(t.selectLink); } }}><Copy size={17} /></button></div>}
     {(error || notice) && <div className="space-feedback" role="status">{error || notice}</div>}
     {children}
-  </>;
+  </div>;
 }

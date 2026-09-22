@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
-import { ArrowUpRight, Check, Filter, Heart, LayoutDashboard, Link2, ListPlus, Map, MapPin, Palette, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { ArrowUpRight, Camera, Check, Filter, Heart, LayoutDashboard, Link2, ListPlus, Map, MapPin, Palette, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { prepareBackgroundPhoto } from "@/lib/photo";
 import { SpaceGate } from "@/components/space-gate";
 import { getGoogleMapsUrl, getMapQuery, getMapSource } from "@/lib/maps";
 import { Locale, messages } from "@/lib/messages";
@@ -63,6 +64,13 @@ export default function Home() {
   const [mapSearchQuery, setMapSearchQuery] = useState("");
   const [adding, setAdding] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [backgroundPhoto, setBackgroundPhoto] = useState<string | null>(null);
+  const [photoDraft, setPhotoDraft] = useState<string | null>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoError, setPhotoError] = useState("");
+  const appearanceSaving = useRef(false);
+  const activeSpace = useRef(spaceId);
+  activeSpace.current = spaceId;
   const [theme, setTheme] = useState<Theme>("clean");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [url, setUrl] = useState("");
@@ -84,6 +92,7 @@ export default function Home() {
     }
     if (!supabase) {
       setWishes(readWishes(WISHES_KEY));
+      setBackgroundPhoto(localStorage.getItem("wish-together:photo"));
       const savedTheme = localStorage.getItem(THEME_KEY);
       if (THEMES.includes(savedTheme as Theme)) setTheme(savedTheme as Theme);
     }
@@ -119,15 +128,33 @@ export default function Home() {
   useEffect(() => {
     if (!supabase || !spaceId) return;
     const client = supabase;
+    let active = true;
+    let lastAppearance: string | null = null;
+    setBackgroundPhoto(null);
+    setPhotoDraft(null);
     async function loadTheme() {
-      const { data } = await client.from("couple_spaces").select("theme").eq("id", spaceId).single();
-      if (data && THEMES.includes(data.theme as Theme)) setTheme(data.theme as Theme);
+      if (appearanceSaving.current) return;
+      const { data } = await client.from("couple_spaces").select("theme, appearance_updated_at").eq("id", spaceId).single();
+      if (!active || appearanceSaving.current || !data) return;
+      if (THEMES.includes(data.theme as Theme)) setTheme(data.theme as Theme);
+      if (lastAppearance !== data.appearance_updated_at) {
+        const { data: photo, error } = await client.from("couple_spaces").select("background_photo").eq("id", spaceId).single();
+        if (!active || appearanceSaving.current || error || !photo) return;
+        setBackgroundPhoto(photo.background_photo ?? null);
+        lastAppearance = data.appearance_updated_at;
+      }
     }
     void loadTheme();
+    const timer = window.setInterval(loadTheme, 15000);
+    window.addEventListener("focus", loadTheme);
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener("focus", loadTheme); };
   }, [spaceId]);
 
   const changeSpace = useCallback((nextSpaceId: string | null) => {
     setSpaceId(nextSpaceId);
+    setPhotoDraft(null);
+    setBackgroundPhoto(null);
+    setAppearanceOpen(false);
     if (!supabase) setWishes(readWishes(WISHES_KEY));
     else if (!nextSpaceId) setWishes([]);
   }, []);
@@ -179,16 +206,54 @@ export default function Home() {
   }
 
   async function chooseTheme(nextTheme: Theme) {
+    if (appearanceSaving.current) return;
+    appearanceSaving.current = true;
+    setPhotoBusy(true);
+    setPhotoError("");
+    try {
     const previous = theme;
     setTheme(nextTheme);
     setError("");
     if (supabase && spaceId) {
-      const { error: themeError } = await supabase.from("couple_spaces").update({ theme: nextTheme }).eq("id", spaceId);
-      if (themeError) { setTheme(previous); setError(t.themeSaveError); return; }
+      const { error: themeError } = await supabase.from("couple_spaces").update({ theme: nextTheme, background_photo: null }).eq("id", spaceId);
+      if (themeError) { setTheme(previous); setPhotoError(t.themeSaveError); return; }
     } else {
       localStorage.setItem(THEME_KEY, nextTheme);
+      localStorage.removeItem("wish-together:photo");
     }
+    setBackgroundPhoto(null);
+    setPhotoDraft(null);
     setAppearanceOpen(false);
+    } catch { setPhotoError(t.themeSaveError); }
+    finally { appearanceSaving.current = false; setPhotoBusy(false); }
+  }
+
+  async function selectPhoto(file: File) {
+    const currentSpace = spaceId;
+    setPhotoBusy(true); setPhotoError("");
+    try {
+      const photo = await prepareBackgroundPhoto(file);
+      if (activeSpace.current === currentSpace) setPhotoDraft(photo);
+    } catch { setPhotoError(locale === "zh-CN" ? "请选择 15 MB 以内的 JPG、PNG 或 WebP 照片。" : "Choose a JPG, PNG or WebP photo under 15 MB."); }
+    finally { setPhotoBusy(false); }
+  }
+
+  async function savePhoto(photo: string | null) {
+    if (appearanceSaving.current) return;
+    const currentSpace = spaceId;
+    appearanceSaving.current = true;
+    setPhotoBusy(true); setPhotoError("");
+    try {
+      if (supabase) {
+        if (!currentSpace) throw new Error("space");
+        const { error } = await supabase.from("couple_spaces").update({ background_photo: photo }).eq("id", currentSpace);
+        if (error) throw error;
+      } else if (photo) localStorage.setItem("wish-together:photo", photo);
+      else localStorage.removeItem("wish-together:photo");
+      if (activeSpace.current !== currentSpace) return;
+      setBackgroundPhoto(photo); setPhotoDraft(null);
+    } catch { setPhotoError(t.themeSaveError); }
+    finally { appearanceSaving.current = false; setPhotoBusy(false); }
   }
 
   async function saveWish(event: React.FormEvent) {
@@ -264,12 +329,12 @@ export default function Home() {
   }
 
   return (
-    <SpaceGate locale={locale} onLocaleChange={changeLocale} onSpaceChange={changeSpace}>
+    <SpaceGate backgroundPhoto={backgroundPhoto} locale={locale} onLocaleChange={changeLocale} onSpaceChange={changeSpace}>
     <main className="app-shell" data-theme={theme} style={themeStyle}>
       <header className="topbar">
         <div className="brand"><Heart size={21} fill="currentColor" strokeWidth={1.5} /><span>{t.brand}</span></div>
         <div className="topbar-actions">
-          <button type="button" className="icon-button appearance-button" title={t.appearance} aria-label={t.appearance} onClick={() => setAppearanceOpen(true)}><Palette size={18} /></button>
+          <button type="button" className="icon-button appearance-button" title={t.appearance} aria-label={t.appearance} onClick={() => { setPhotoError(""); setPhotoDraft(null); setAppearanceOpen(true); }}><Palette size={18} /></button>
           <div className="locale-control" role="group" aria-label={t.language}>
             <button type="button" aria-pressed={locale === "zh-CN"} onClick={() => changeLocale("zh-CN")}>中</button>
             <button type="button" aria-pressed={locale === "en"} onClick={() => changeLocale("en")}>EN</button>
@@ -394,11 +459,20 @@ export default function Home() {
       {appearanceOpen && <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setAppearanceOpen(false); }}>
         <div className="dialog appearance-dialog" role="dialog" aria-modal="true" aria-labelledby="appearance-title">
           <div className="dialog-head"><div><h2 id="appearance-title">{t.appearanceTitle}</h2><p>{t.appearanceBody}</p></div><button type="button" className="icon-button" aria-label={t.cancel} onClick={() => setAppearanceOpen(false)}><X size={20} /></button></div>
+          <div className="photo-upload-panel">
+            <div><Camera size={22} /><h3>{locale === "zh-CN" ? "把我们的照片，变成背景" : "Your favorite memory, all around you"}</h3><p>{locale === "zh-CN" ? "选一张合照、一次旅行，或你们喜欢的风景。" : "A photo of you two, a trip, or somewhere you love."}</p></div>
+            {(photoDraft || backgroundPhoto) && <img className="background-photo-preview" src={photoDraft || backgroundPhoto || ""} alt={locale === "zh-CN" ? "背景照片预览" : "Background photo preview"} />}
+            <div className="photo-upload-actions"><label className="secondary photo-upload-label" aria-disabled={photoBusy}><Camera size={15} />{photoBusy ? (locale === "zh-CN" ? "处理中…" : "Working…") : (locale === "zh-CN" ? "选择照片" : "Choose a photo")}<input type="file" accept="image/jpeg,image/png,image/webp" disabled={photoBusy} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void selectPhoto(file); }} /></label>
+              {photoDraft && <button className="primary" type="button" disabled={photoBusy} onClick={() => void savePhoto(photoDraft)}>{locale === "zh-CN" ? "用作我们的背景" : "Use as our background"}</button>}
+              {(photoDraft || backgroundPhoto) && <button className="secondary" type="button" disabled={photoBusy} onClick={() => photoDraft ? setPhotoDraft(null) : void savePhoto(null)}>{photoDraft ? t.cancel : (locale === "zh-CN" ? "移除照片" : "Remove photo")}</button>}
+            </div><small>{locale === "zh-CN" ? "JPG / PNG / WebP · 最大 15 MB · 自动压缩" : "JPG / PNG / WebP · Up to 15 MB · Automatically compressed"}</small>
+            {photoError && <p className="form-error" role="alert">{photoError}</p>}
+          </div>
           <div className="theme-grid">
-            {THEMES.map((option) => <button type="button" key={option} className="theme-option" data-theme-option={option} aria-pressed={theme === option} onClick={() => void chooseTheme(option)}>
+            {THEMES.map((option) => <button type="button" key={option} disabled={photoBusy} className="theme-option" data-theme-option={option} aria-pressed={!backgroundPhoto && theme === option} onClick={() => void chooseTheme(option)}>
               <span className="theme-preview" style={{ backgroundImage: themeImage(option) }} />
               <span>{option === "clean" ? t.themeClean : option === "coast" ? t.themeCoast : option === "city" ? t.themeCity : t.themeGarden}</span>
-              {theme === option && <Check size={16} />}
+              {!backgroundPhoto && theme === option && <Check size={16} />}
             </button>)}
           </div>
         </div>

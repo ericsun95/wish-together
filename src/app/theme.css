@@ -67,3 +67,29 @@
   .theme-option { grid-template-columns: 68px minmax(0, 1fr) 20px; }
   .theme-preview { width: 68px; }
 }
+.couple-space[data-photo="true"] .app-shell { background: transparent; min-height: 100vh; --ink: #384239; --muted: #687368; --line: #dce3d9; --surface: #fffefbf2; --back: #faf9f5; --accent: #b5786e; }
+.couple-space[data-photo="true"] .app-shell > .topbar { border-radius: 16px; }
+.couple-space[data-photo="true"] .app-shell .workspace { background: #fffefbe8; border-radius: 20px; }
+.photo-upload-panel { background: #f7f3ee; border: 1px dashed #d5c6ba; border-radius: 14px; padding: 22px; margin-bottom: 24px; color: #615247; }
+.photo-upload-panel h3 { font-size: 16px; margin: 10px 0 7px; }
+.photo-upload-panel p { font-size: 12px; line-height: 1.6; margin: 0 0 16px; }
+.photo-upload-panel small { display: block; margin-top: 12px; font-size: 10px; color: #8d7c6e; }
+.photo-upload-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.photo-upload-label { position: relative; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; overflow: hidden; }
+.photo-upload-label input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+.photo-upload-label:focus-within { outline: 2px solid var(--accent); outline-offset: 3px; }
+.background-photo-preview { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 9px; margin: 14px 0; }
+.photo-upload-panel .form-error { margin: 12px 0 0; color: #b23b35; }
+.theme-option:disabled, .photo-upload-label[aria-disabled="true"] { opacity: .55; cursor: wait; }
+.appearance-dialog { max-height: calc(100dvh - 32px); overflow-y: auto; }
+.dialog .photo-upload-label { display: inline-flex; }
+.couple-space[data-photo="true"] { padding: 0 16px 24px; }
+.couple-space[data-photo="true"] .app-shell > .topbar { max-width: 1040px; margin: 18px auto; padding: 0 24px; }
+.couple-space[data-photo="true"] .app-shell .workspace { margin: 0 auto; background: #fffefbdb; }
+.couple-space[data-photo="true"] .couple-header { background: #fffaf3d6; }
+@media(max-width:600px) {
+  .couple-space[data-photo="true"] { padding: 0 10px 16px; }
+  .couple-space[data-photo="true"] .app-shell > .topbar { padding: 0 12px; margin: 12px auto; }
+  .couple-space[data-photo="true"] .brand { font-size: 16px; }
+  .couple-space[data-photo="true"] .tabs { gap: 10px; }
+}
