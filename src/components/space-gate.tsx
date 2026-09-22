@@ -20,7 +20,8 @@ function invitationToken(input: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(token) ? token : null;
 }
 
-export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange, backgroundPhoto }: {
+export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange, backgroundPhoto, theme = "clean" }: {
+  theme?: "clean" | "coast" | "city" | "garden";
   backgroundPhoto?: string | null;
   children: ReactNode;
   locale: Locale;
@@ -288,7 +289,7 @@ export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange, bac
     </div>;
   }
   const displayedMembers = members.length ? members : [{ user_id: user.id, role: space.role }];
-  return <div className="couple-space" data-photo={Boolean(backgroundPhoto)} style={{ "--couple-photo": backgroundPhoto ? `url("${backgroundPhoto}")` : "none" } as CSSProperties}>
+  return <div className="couple-space" data-photo={Boolean(backgroundPhoto)} data-theme={backgroundPhoto ? "photo" : theme} style={{ "--couple-photo": backgroundPhoto ? `url("${backgroundPhoto}")` : theme === "clean" ? "none" : `url("${process.env.NEXT_PUBLIC_BASE_PATH || ""}/themes/${theme}.webp")` } as CSSProperties}>
     <section className="couple-header" aria-label={zh ? "我们的情侣空间" : "Our couple space"}>
       <div className="couple-toolbar"><span><Heart size={14} fill="currentColor" />{zh ? "只属于我们" : "JUST THE TWO OF US"}</span><div className="space-strip-actions">
         {space.role === "owner" && members.length < 2 && <button type="button" disabled={busy} onClick={createInvite}><UserRoundPlus size={15} />{t.createInvite}</button>}
