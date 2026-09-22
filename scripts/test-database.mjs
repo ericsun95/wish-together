@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 
 const db = new PGlite();
@@ -25,10 +25,11 @@ try {
       as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
     insert into auth.users (id) values ('${owner}'), ('${partner}'), ('${outsider}');
   `);
-  const migration = await readFile(new URL("../supabase/migrations/202609200001_couple_spaces.sql", import.meta.url), "utf8");
-  await db.exec(migration);
-  const wishDetailsMigration = await readFile(new URL("../supabase/migrations/202609210001_wish_details.sql", import.meta.url), "utf8");
-  await db.exec(wishDetailsMigration);
+  const migrationsUrl = new URL("../supabase/migrations/", import.meta.url);
+  const migrations = (await readdir(migrationsUrl)).filter((name) => name.endsWith(".sql")).sort();
+  for (const migration of migrations) {
+    await db.exec(await readFile(new URL(migration, migrationsUrl), "utf8"));
+  }
 
   await as(owner);
   const created = await db.query("select public.create_couple_space($1) as id", ["Our list"]);
