@@ -3,6 +3,7 @@ import "./globals.css";
 import "./space.css";
 import "./wish-details.css";
 import "./theme.css";
+import "./life.css";
 
 export const metadata: Metadata = {
   title: "Wish Together",

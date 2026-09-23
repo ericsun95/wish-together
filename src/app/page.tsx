@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import { ArrowUpRight, Camera, Check, Filter, Heart, LayoutDashboard, Link2, ListPlus, Map, MapPin, Palette, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Camera, Check, Filter, Heart, LayoutDashboard, Link2, ListPlus, Map, MapPin, MessageCircle, Palette, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { prepareBackgroundPhoto } from "@/lib/photo";
+import { LifeDashboard, DateAndRandom } from "@/components/life-dashboard";
+import { WishExperience } from "@/components/wish-experience";
 import { SpaceGate } from "@/components/space-gate";
 import { getGoogleMapsUrl, getMapQuery, getMapSource } from "@/lib/maps";
 import { Locale, messages } from "@/lib/messages";
@@ -11,7 +13,7 @@ import { supabase } from "@/lib/supabase";
 type ChecklistItem = { id: string; label: string; completed: boolean; position: number };
 type WishStatus = "wanted" | "planned" | "done";
 type Wish = { id: string; title: string; note: string; url: string; address: string; category: string; status: WishStatus; plannedDate: string; completionNote: string; createdAt: string; checklist: ChecklistItem[] };
-type View = "wishes" | "done" | "dashboard" | "map";
+type View = "wishes" | "done" | "dashboard" | "map" | "life";
 type Theme = "clean" | "coast" | "city" | "garden";
 
 const WISHES_KEY = "wish-together:wishes";
@@ -56,6 +58,7 @@ export default function Home() {
   const [wishes, setWishes] = useState<Wish[]>([]);
   const [spaceId, setSpaceId] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [experienceId, setExperienceId] = useState<string | null>(null);
   const [view, setView] = useState<View>("wishes");
   const [statusFilter, setStatusFilter] = useState<"all" | WishStatus>("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -106,15 +109,17 @@ export default function Home() {
   useEffect(() => {
     if (!supabase || !spaceId) return;
     const client = supabase;
+    let active = true;
     async function loadWishes() {
-      setError("");
       const { data: rows, error: wishError } = await client.from("wishes")
         .select("id, title, note, url, address, category, status, planned_date, completed_note, created_at").eq("space_id", spaceId).order("created_at", { ascending: false });
+      if (!active) return;
       if (wishError || !rows) return setError(messages[locale].wishLoadError);
       const ids = rows.map((row) => row.id);
       const { data: items, error: itemError } = ids.length
         ? await client.from("wish_checklist_items").select("id, wish_id, label, completed, position").in("wish_id", ids).order("position")
         : { data: [], error: null };
+      if (!active) return;
       if (itemError) return setError(messages[locale].wishLoadError);
       setWishes(rows.map((row) => ({
         id: row.id, title: row.title, note: row.note, url: row.url ?? "", address: row.address ?? "", category: row.category ?? "",
@@ -123,6 +128,9 @@ export default function Home() {
       })));
     }
     void loadWishes();
+    const timer = window.setInterval(loadWishes, 15000);
+    window.addEventListener("life-changed", loadWishes);
+    return ()=>{active=false;window.clearInterval(timer);window.removeEventListener("life-changed",loadWishes);};
   }, [spaceId, locale]);
 
   useEffect(() => {
@@ -152,6 +160,7 @@ export default function Home() {
 
   const changeSpace = useCallback((nextSpaceId: string | null) => {
     setSpaceId(nextSpaceId);
+    setExperienceId(null);
     setPhotoDraft(null);
     setBackgroundPhoto(null);
     setAppearanceOpen(false);
@@ -167,7 +176,7 @@ export default function Home() {
 
   const t = messages[locale];
   const visible = wishes.filter((wish) => {
-    if (view === "dashboard" || view === "map") return false;
+    if (view === "dashboard" || view === "map" || view === "life") return false;
     if ((wish.status === "done") !== (view === "done")) return false;
     if (statusFilter !== "all" && wish.status !== statusFilter) return false;
     return categoryFilter === "all" || wish.category === categoryFilter;
@@ -256,6 +265,13 @@ export default function Home() {
     finally { appearanceSaving.current = false; setPhotoBusy(false); }
   }
 
+  async function memoryBackground(photo: string) {
+    if (!supabase || !spaceId) throw new Error("No shared space");
+    const {error} = await supabase.from("couple_spaces").update({background_photo:photo}).eq("id",spaceId);
+    if(error) throw error;
+    setBackgroundPhoto(photo);
+  }
+
   async function saveWish(event: React.FormEvent) {
     event.preventDefault();
     if (url.trim() && !validUrl(url.trim())) return setError(t.urlError);
@@ -314,8 +330,12 @@ export default function Home() {
 
   async function toggleWish(wish: Wish) {
     const nextStatus: WishStatus = wish.status === "done" ? "wanted" : "done";
-    if (supabase) await supabase.from("wishes").update({ status: nextStatus, planned_date: null, completed_at: nextStatus === "done" ? new Date().toISOString() : null }).eq("id", wish.id);
+    if (supabase) {
+      const {error} = await supabase.from("wishes").update({ status: nextStatus, planned_date: null, completed_at: nextStatus === "done" ? new Date().toISOString() : null }).eq("id", wish.id);
+      if(error) {setError(t.wishSaveError); return;}
+    }
     setWishes((all) => all.map((item) => item.id === wish.id ? { ...item, status: nextStatus, plannedDate: "" } : item));
+    if(nextStatus === "done" && spaceId) setExperienceId(wish.id);
   }
 
   async function toggleChecklist(wishId: string, item: ChecklistItem) {
@@ -324,7 +344,7 @@ export default function Home() {
   }
 
   async function deleteWish(id: string) {
-    if (supabase) await supabase.from("wishes").delete().eq("id", id);
+    if (supabase) { const {error} = await supabase.from("wishes").delete().eq("id", id); if(error){setError(t.wishSaveError);return;} }
     setWishes((all) => all.filter((item) => item.id !== id));
   }
 
@@ -343,11 +363,13 @@ export default function Home() {
       </header>
 
       <section className="workspace">
+        {spaceId && view !== "life" && <DateAndRandom spaceId={spaceId} zh={locale==="zh-CN"} wishes={wishes} onWish={wish=>setExperienceId(wish.id)}/>}
         <div className="section-head">
           <div className="tabs" role="tablist">
             <button role="tab" aria-selected={view === "wishes"} onClick={() => { setView("wishes"); setStatusFilter("all"); }}>{t.wishes}<span>{wishes.filter((w) => w.status !== "done").length}</span></button>
             <button role="tab" aria-selected={view === "done"} onClick={() => { setView("done"); setStatusFilter("all"); }}>{t.done}<span>{wishes.filter((w) => w.status === "done").length}</span></button>
             <button role="tab" aria-selected={view === "dashboard"} onClick={() => setView("dashboard")}><LayoutDashboard size={15} />{t.dashboard}</button>
+            <button role="tab" aria-selected={view === "life"} onClick={()=>setView("life")}><Heart size={15}/>{locale==="zh-CN"?"我们的日常":"Our life"}</button>
             <button role="tab" aria-selected={view === "map"} onClick={() => setView("map")}><Map size={15} />{t.map}</button>
           </div>
           <button className="primary" type="button" onClick={openNewWish}><Plus size={18} />{t.add}</button>
@@ -367,7 +389,7 @@ export default function Home() {
           {hasFilters && <button type="button" className="clear-filters" onClick={() => { setStatusFilter("all"); setCategoryFilter("all"); }}><X size={14} />{t.clearFilters}</button>}
         </div>}
 
-        {view === "map" ? <div className="map-view">
+        {view === "life" ? (spaceId ? <LifeDashboard spaceId={spaceId} zh={locale==="zh-CN"} wishes={wishes} onWish={wish=>setExperienceId(wish.id)} onBackground={memoryBackground}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起记录纪念日和回忆。":"Sign in to share your dates and memories."}</p>) : view === "map" ? <div className="map-view">
           <div className="map-heading"><h1>{t.mapTitle}</h1><p>{mapWish ? mapSource : t.mapEmpty}</p></div>
           <form className="map-search" onSubmit={(event) => { event.preventDefault(); setMapSearchQuery(getMapQuery(mapSearch)); }}>
             <Search size={17} aria-hidden="true" />
@@ -405,6 +427,7 @@ export default function Home() {
                 <div className="wish-mark"><Heart size={17} /></div>
                 <div className="wish-content">
                   <h2>{wish.title}</h2>
+                  {spaceId && <button type="button" className="text-action wish-discuss" onClick={()=>setExperienceId(wish.id)}><MessageCircle size={14}/>{wish.status==="done"?(locale==="zh-CN"?"留言 · 回忆照片":"Comments · Memories"):(locale==="zh-CN"?"留言 · 约会安排":"Comments · Plan a date")}</button>}
                   {wish.category && <span className="wish-category">{wish.category}</span>}
                   {wish.status === "planned" && <span className="wish-status">{t.plannedStatus}{wish.plannedDate ? ` · ${wish.plannedDate}` : ""}</span>}
                   {wish.note && <p>{wish.note}</p>}
@@ -427,9 +450,11 @@ export default function Home() {
             ))}
           </div>
         )}
+        {error && !adding && <p className="form-error" role="alert">{error}</p>}
         <p className="storage-note">{supabase ? t.sharedStorage : t.localOnly}</p>
       </section>
 
+      {spaceId && experienceId && wishes.find(w=>w.id===experienceId) && <WishExperience key={`${spaceId}:${experienceId}`} spaceId={spaceId} wish={wishes.find(w=>w.id===experienceId)!} wishes={wishes} zh={locale==="zh-CN"} onClose={()=>setExperienceId(null)} onBackground={memoryBackground}/>}
       {adding && <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) resetEditor(); }}>
         <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
           <div className="dialog-head"><h2 id="dialog-title">{editingId ? t.edit : t.add}</h2><button type="button" className="icon-button" aria-label={t.cancel} onClick={resetEditor}><X size={20} /></button></div>
