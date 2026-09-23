@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ArrowRight, Copy, Heart, LogIn, LogOut, Plus, Pencil, RotateCcw, UserRoundPlus } from "lucide-react";
 import { CoupleProfile } from "./couple-profile";
-import { anniversaryDays, daysTogether, type Anniversary } from "@/lib/life";
+import { anniversaryDays, type Anniversary, type LifeWish } from "@/lib/life";
+import { CoupleDates } from "./couple-dates";
 import type { User } from "@supabase/supabase-js";
 import { messages, type Locale } from "@/lib/messages";
 import { themeBackground, type Theme } from "@/lib/themes";
@@ -23,7 +24,9 @@ function invitationToken(input: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(token) ? token : null;
 }
 
-export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange, backgroundPhoto, theme = "clean" }: {
+export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange, backgroundPhoto, theme = "clean", wishes, onWish }: {
+  wishes: LifeWish[];
+  onWish: (wish: LifeWish) => void;
   theme?: Theme;
   backgroundPhoto?: string | null;
   children: ReactNode;
@@ -309,9 +312,10 @@ export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange, bac
         {space.role === "owner" && <button type="button" disabled={busy} onClick={revokeInvites} title={t.revokeInvites}><RotateCcw size={14} />{t.revokeInvites}</button>}
         <button type="button" title={user.email} onClick={() => void supabase?.auth.signOut()}><LogOut size={14} />{t.signOut}</button>
       </div></div>
+      <CoupleDates togetherSince={space.together_since} wishes={wishes} zh={zh} onWish={onWish}/>
       <div className="couple-portrait" aria-live="polite">
         {partnerCard(displayedMembers.find((member) => member.role === "owner"), "owner")}
-        <div className="couple-center"><div className="couple-heart"><span /><Heart size={25} fill="currentColor" /><span /></div><p>{space.together_since ? (zh ? `在一起第 ${daysTogether(space.together_since)} 天` : `${daysTogether(space.together_since)} days together`) : (zh ? "我们的故事，慢慢写" : "Our story, one wish at a time")}</p><h1>{space.name}</h1><span className="couple-caption">{space.signature || (membersError ? (zh ? "暂时无法加载另一半的信息" : "Partner details unavailable") : members.length === 2 ? (zh ? "两个人，一个小世界" : "Two hearts. One little world.") : (zh ? "从一个心愿，开始我们的日常" : "Make room for a little magic."))}</span></div>
+        <div className="couple-center"><div className="couple-heart"><span /><Heart size={25} fill="currentColor" /><span /></div><h1>{space.name}</h1><span className="couple-caption">{space.signature || (membersError ? (zh ? "暂时无法加载另一半的信息" : "Partner details unavailable") : members.length === 2 ? (zh ? "两个人，一个小世界" : "Two hearts. One little world.") : (zh ? "从一个心愿，开始我们的日常" : "Make room for a little magic."))}</span></div>
         {partnerCard(displayedMembers.find((member) => member.role === "partner"), "partner")}
       </div>
       {upcomingDate && <div className="header-anniversary">{upcomingDate.emoji} {upcomingDate.title} · {upcomingDate.days===0?(zh?"就是今天":"Today"):(zh?`还有 ${upcomingDate.days} 天`:`In ${upcomingDate.days} days`)}</div>}

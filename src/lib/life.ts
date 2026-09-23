@@ -7,6 +7,10 @@ export const DAY = 86400000;
 export function localToday(now = new Date()) { return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`; }
 export function dayNumber(date: string) { const [y,m,d] = date.split('-').map(Number); return Date.UTC(y,m-1,d)/DAY; }
 export function daysTogether(start: string, today = localToday()) { return Math.max(0, dayNumber(today)-dayNumber(start)+1); }
+export function nextPlannedWish(wishes: LifeWish[], today = localToday()) {
+  return wishes.filter(wish => wish.status !== 'done' && wish.plannedDate && wish.plannedDate >= today)
+    .sort((a, b) => a.plannedDate.localeCompare(b.plannedDate))[0] ?? null;
+}
 export function anniversaryDays(date: string, repeat: boolean, today = localToday()) {
   if (!repeat) return dayNumber(date)-dayNumber(today);
   const [,m,d] = date.split('-').map(Number);
