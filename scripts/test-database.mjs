@@ -19,6 +19,7 @@ try {
   await db.exec(`
     create role authenticated;
     create role anon;
+    alter default privileges in schema public grant all on tables to anon, authenticated;
     create schema auth;
     create schema storage;
     create table storage.buckets (id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
@@ -38,6 +39,9 @@ try {
     await db.exec(await readFile(new URL(migration, migrationsUrl), "utf8"));
   }
 
+  assert.equal((await db.query("select has_column_privilege('authenticated','public.space_members','role','UPDATE') as allowed")).rows[0].allowed, false);
+  assert.equal((await db.query("select has_column_privilege('authenticated','public.memories','created_by','UPDATE') as allowed")).rows[0].allowed, false);
+  assert.equal((await db.query("select has_table_privilege('anon','public.memories','SELECT') as allowed")).rows[0].allowed, false);
   await as(owner);
   const created = await db.query("select public.create_couple_space($1) as id", ["Our list"]);
   const spaceId = created.rows[0].id;

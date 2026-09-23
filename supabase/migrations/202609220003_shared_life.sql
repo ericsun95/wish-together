@@ -50,6 +50,9 @@ create index memories_space_created on public.memories(space_id, taken_on desc, 
 create function private.limit_space_memories() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
+  if auth.uid() is null or not private.is_space_member(new.space_id) then
+    raise exception 'Space membership required';
+  end if;
   perform 1 from public.couple_spaces where id = new.space_id for update;
   if (select count(*) from public.memories where space_id = new.space_id) >= 200 then
     raise exception 'Album limit reached: remove a photo before adding another';
@@ -132,3 +135,11 @@ create policy "members remove memory photos" on storage.objects for delete to au
     and private.is_space_member(m.space_id)
   )
 );
+
+create index anniversaries_created_by_idx on public.anniversaries(created_by);
+create index memories_created_by_idx on public.memories(created_by);
+create index memories_wish_space_idx on public.memories(wish_id, space_id);
+create index discussion_created_by_idx on public.discussion_comments(created_by);
+create index reactions_space_idx on public.comment_reactions(space_id);
+create index reactions_user_idx on public.comment_reactions(user_id);
+create index reactions_comment_space_idx on public.comment_reactions(comment_id, space_id);

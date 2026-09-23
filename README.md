@@ -30,7 +30,7 @@ See [PLAN.md](PLAN.md) and the repository's GitHub Issues for the roadmap.
 
 The **Our life** tab contains multiple anniversaries and a private memory album. Wish cards open comments and date plans; completing a wish opens its memories. Profiles include personal nicknames and avatars plus the shared motto and relationship start date.
 
-Apply `202609220003_shared_life.sql` before deploying these screens. It adds member-only tables and the private `couple-memories` Storage bucket. No service-role key is used in the browser.
+Apply `202609220003_shared_life.sql` and `20260923022427_shared_life_permissions_indexes.sql` before deploying these screens. It adds member-only tables and the private `couple-memories` Storage bucket. No service-role key is used in the browser.
 
 - Photos are re-encoded to JPEG locally (up to 1440 px / 500 KB); original files and metadata are not uploaded. Thumbnails are at most 24 KB. Each space is limited to 200 memory records, including incomplete uploads.
 - Metadata reserves the permitted Storage paths before upload. Failures attempt cleanup; incomplete entries can be removed from the album. Deletion removes both image objects before removing the record.
