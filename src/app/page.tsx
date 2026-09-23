@@ -10,16 +10,17 @@ import { getGoogleMapsUrl, getMapQuery, getMapSource } from "@/lib/maps";
 import { Locale, messages } from "@/lib/messages";
 import { supabase } from "@/lib/supabase";
 
+import { THEMES, themeNames, themeBackground, type Theme } from "@/lib/themes";
+
 type ChecklistItem = { id: string; label: string; completed: boolean; position: number };
 type WishStatus = "wanted" | "planned" | "done";
 type Wish = { id: string; title: string; note: string; url: string; address: string; category: string; status: WishStatus; plannedDate: string; completionNote: string; createdAt: string; checklist: ChecklistItem[] };
 type View = "wishes" | "done" | "dashboard" | "map" | "life";
-type Theme = "clean" | "coast" | "city" | "garden";
 
 const WISHES_KEY = "wish-together:wishes";
 const LOCALE_KEY = "wish-together:locale";
 const THEME_KEY = "wish-together:theme";
-const THEMES: Theme[] = ["clean", "coast", "city", "garden"];
+
 
 function validUrl(value: string) {
   try {
@@ -194,7 +195,7 @@ export default function Home() {
   const categoryNames = categories.map(([name]) => name);
   const hasFilters = categoryFilter !== "all" || statusFilter !== "all";
   const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
-  const themeImage = (selected: Theme) => selected === "clean" ? undefined : `url("${basePath}/themes/${selected}.webp")`;
+  const themeImage = (selected: Theme) => themeBackground(selected, basePath);
   const themeStyle = { "--theme-image": themeImage(theme) } as CSSProperties;
 
   function resetEditor() {
@@ -219,21 +220,18 @@ export default function Home() {
     appearanceSaving.current = true;
     setPhotoBusy(true);
     setPhotoError("");
-    try {
     const previous = theme;
+    try {
     setTheme(nextTheme);
     setError("");
     if (supabase && spaceId) {
-      const { error: themeError } = await supabase.from("couple_spaces").update({ theme: nextTheme, background_photo: null }).eq("id", spaceId);
+      const { error: themeError } = await supabase.from("couple_spaces").update({ theme: nextTheme }).eq("id", spaceId);
       if (themeError) { setTheme(previous); setPhotoError(t.themeSaveError); return; }
     } else {
       localStorage.setItem(THEME_KEY, nextTheme);
-      localStorage.removeItem("wish-together:photo");
     }
-    setBackgroundPhoto(null);
-    setPhotoDraft(null);
-    setAppearanceOpen(false);
-    } catch { setPhotoError(t.themeSaveError); }
+    if (!photoDraft) setAppearanceOpen(false);
+    } catch { setTheme(previous); setPhotoError(t.themeSaveError); }
     finally { appearanceSaving.current = false; setPhotoBusy(false); }
   }
 
@@ -493,11 +491,11 @@ export default function Home() {
             </div><small>{locale === "zh-CN" ? "JPG / PNG / WebP · 最大 15 MB · 自动压缩" : "JPG / PNG / WebP · Up to 15 MB · Automatically compressed"}</small>
             {photoError && <p className="form-error" role="alert">{photoError}</p>}
           </div>
-          <div className="theme-grid">
-            {THEMES.map((option) => <button type="button" key={option} disabled={photoBusy} className="theme-option" data-theme-option={option} aria-pressed={!backgroundPhoto && theme === option} onClick={() => void chooseTheme(option)}>
+          <p className="life-muted">{locale === "zh-CN" ? "主题只改变配色，已上传的背景照片会保留。移除照片后显示主题背景。" : "Themes change the palette and keep your uploaded photo. Remove the photo to show the theme background."}</p><div className="theme-grid">
+            {THEMES.map((option) => <button type="button" key={option} disabled={photoBusy} className="theme-option" data-theme-option={option} aria-pressed={theme === option} onClick={() => void chooseTheme(option)}>
               <span className="theme-preview" style={{ backgroundImage: themeImage(option) }} />
-              <span>{option === "clean" ? t.themeClean : option === "coast" ? t.themeCoast : option === "city" ? t.themeCity : t.themeGarden}</span>
-              {!backgroundPhoto && theme === option && <Check size={16} />}
+              <span>{themeNames[option][locale === "zh-CN" ? 0 : 1]}</span>
+              {theme === option && <Check size={16} />}
             </button>)}
           </div>
         </div>
