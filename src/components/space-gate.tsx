@@ -6,6 +6,7 @@ import { CoupleProfile } from "./couple-profile";
 import { anniversaryDays, daysTogether, type Anniversary } from "@/lib/life";
 import type { User } from "@supabase/supabase-js";
 import { messages, type Locale } from "@/lib/messages";
+import { themeBackground, type Theme } from "@/lib/themes";
 import { supabase } from "@/lib/supabase";
 
 type Member = { user_id: string; role: string; display_name?: string; avatar_url?: string; custom_avatar?: string | null };
@@ -23,7 +24,7 @@ function invitationToken(input: string) {
 }
 
 export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange, backgroundPhoto, theme = "clean" }: {
-  theme?: "clean" | "coast" | "city" | "garden";
+  theme?: Theme;
   backgroundPhoto?: string | null;
   children: ReactNode;
   locale: Locale;
@@ -301,7 +302,7 @@ export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange, bac
   const upcomingDate = specialDates.map(date=>({...date, days:anniversaryDays(date.event_date,date.repeats_yearly)})).filter(date=>date.days>=0).sort((a,b)=>a.days-b.days)[0];
   const myMember = members.find(member=>member.user_id===user.id);
   const displayedMembers = members.length ? members : [{ user_id: user.id, role: space.role }];
-  return <div className="couple-space" data-photo={Boolean(backgroundPhoto)} data-theme={backgroundPhoto ? "photo" : theme} style={{ "--couple-photo": backgroundPhoto ? `url("${backgroundPhoto}")` : theme === "clean" ? "none" : `url("${process.env.NEXT_PUBLIC_BASE_PATH || ""}/themes/${theme}.webp")` } as CSSProperties}>
+  return <div className="couple-space" data-photo={Boolean(backgroundPhoto)} data-theme={theme} style={{ "--couple-photo": backgroundPhoto ? `url("${backgroundPhoto}")` : themeBackground(theme, process.env.NEXT_PUBLIC_BASE_PATH || "") } as CSSProperties}>
     <section className="couple-header" aria-label={zh ? "我们的情侣空间" : "Our couple space"}>
       <div className="couple-toolbar"><span><Heart size={14} fill="currentColor" />{zh ? "只属于我们" : "JUST THE TWO OF US"}</span><div className="space-strip-actions"><button type="button" onClick={()=>setProfileOpen(true)}><Pencil size={14}/>{zh?"编辑资料":"Edit profiles"}</button>
         {space.role === "owner" && members.length < 2 && <button type="button" disabled={busy} onClick={createInvite}><UserRoundPlus size={15} />{t.createInvite}</button>}
