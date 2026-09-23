@@ -1,0 +1,93 @@
+.header-anniversary { width: fit-content; max-width: 100%; margin: 0 auto; padding: 8px 16px; border-radius: 30px; background: var(--accent-light); color: var(--accent); font-size: 12px; text-align: center; }
+.life-backdrop { z-index: 30; }
+.life-dialog { width: min(100%, 720px); max-height: calc(100dvh - 32px); overflow-y: auto; color: var(--ink); background: var(--surface); outline: none; }
+.life-dialog select, .life-dashboard select { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--ink); }
+.life-dialog > label { display: grid; gap: 8px; font-size: 13px; }
+.life-dialog button:disabled, .life-dashboard button:disabled { opacity: .55; cursor: default; }
+.life-dialog .dialog-head { position: sticky; top: -22px; background: var(--surface); z-index: 2; padding: 10px 0; }
+.life-dialog .dialog-head h2 { overflow-wrap: anywhere; }
+.life-dialog .dialog-head .icon-button { flex-shrink: 0; }
+.life-dialog .check-label { display: flex; align-items: center; }
+.life-dialog .check-label input { width: auto; }
+.life-form-grid { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 12px; }
+.life-form-grid label { min-width: 0; }
+.life-muted { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.life-empty { padding: 35px 18px; border: 1px dashed var(--line); border-radius: 14px; text-align: center; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.life-section { padding: 26px 0; }
+.life-section-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.life-section-head h2 { margin: 8px 0; font-size: 20px; font-family: Georgia, 'Songti SC', serif; font-weight: 500; }
+.eyebrow { font-size: 9px; letter-spacing: 2px; color: var(--accent); }
+.life-subnav { display: flex; gap: 8px; margin: 22px 0; }
+.life-subnav button { padding: 10px 18px; border: 1px solid var(--line); border-radius: 20px; background: transparent; color: var(--muted); font-size: 13px; }
+.life-subnav button[aria-pressed=true] { background: var(--accent-light); color: var(--accent); border-color: var(--accent); }
+.date-random-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; margin-bottom: 26px; border: 1px solid var(--line); border-radius: 13px; background: color-mix(in srgb, var(--accent-light) 45%, transparent); }
+.next-date { display: flex; align-items: center; gap: 14px; text-align: left; border: 0; background: none; color: var(--accent); min-width: 0; }
+.next-date > svg { flex: none; }
+.next-date span { display: grid; gap: 6px; min-width: 0; }
+.next-date small { color: var(--muted); font-size: 10px; }
+.next-date strong { font-size: 13px; color: var(--ink); overflow-wrap: anywhere; }
+.next-date:disabled { cursor: default; }
+.random-result { padding: 35px 10px; text-align: center; }
+.random-result > span { color: var(--accent); font-size: 45px; }
+.random-result h3 { font-size: 20px; overflow-wrap: anywhere; }
+.random-result p { font-size: 12px; color: var(--muted); }
+.life-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.life-actions .text-action { margin: 0 auto 0 0; }
+.anniversary-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; }
+.anniversary-card { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); padding: 20px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.anniversary-emoji { font-size: 28px; }
+.anniversary-card strong { font-size: 15px; overflow-wrap: anywhere; }
+.anniversary-count { font-family: Georgia,'Songti SC',serif; font-size: 21px; color: var(--accent); }
+.anniversary-card small, .anniversary-card p { font-size: 11px; color: var(--muted); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.anniversary-card .life-actions { width: 100%; margin-top: auto; }
+.emoji-options, .reaction-row, .emoji-compose { display: flex; flex-wrap: wrap; gap: 5px; }
+.emoji-options button, .reaction-row button, .emoji-compose button { border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 5px 8px; color: var(--ink); }
+.emoji-options button[aria-pressed=true], .reaction-row button[aria-pressed=true] { background: var(--accent-light); border-color: var(--accent); }
+.reaction-row small { margin-left: 4px; }
+.discussion { padding: 22px 0; border-top: 1px solid var(--line); margin-top: 22px; }
+.discussion h3, .date-plan h3 { font-size: 16px; margin: 0 0 18px; }
+.comment { display: flex; gap: 10px; margin-bottom: 18px; }
+.mini-avatar { position: relative; flex: none; display: grid; place-items: center; width: 30px; height: 30px; background: var(--accent-light); color: var(--accent); border-radius: 50%; overflow: hidden; font-size: 12px; }
+.mini-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.comment-main { min-width: 0; flex: 1; }
+.comment-main header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.comment-main strong { font-size: 12px; }
+.comment-main time { font-size: 10px; color: var(--muted); }
+.comment-main header button { margin-left: auto; height: 22px; }
+.comment-main p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; font-size: 13px; line-height: 1.7; }
+.comment-compose { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.emoji-compose button { padding: 4px 6px; }
+.wish-content .wish-discuss { margin: 0 0 10px; font-size: 11px; }
+.memory-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; }
+.memory-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.memory-image { display: block; width: 100%; padding: 0; border: 0; background: var(--accent-light); aspect-ratio: 4/3; overflow: hidden; }
+.memory-image img { width: 100%; height: 100%; object-fit: cover; transition: transform .2s; }
+.memory-image:hover img { transform: scale(1.03); }
+.memory-card > div:not(.photo-placeholder) { position: relative; padding: 14px 34px 14px 14px; }
+.memory-card time { color: var(--muted); font-size: 10px; }
+.memory-card p { font-size: 12px; line-height: 1.6; margin: 6px 0 0; overflow-wrap: anywhere; }
+.memory-card .icon-button { position: absolute; bottom: 10px; right: 4px; }
+.photo-placeholder { display: grid; place-items: center; aspect-ratio: 4/3; color: var(--muted); background: var(--accent-light); font-size: 12px; }
+.memory-full img { width: 100%; max-height: 55vh; object-fit: contain; border-radius: 10px; }
+.album-pagination { display: flex; justify-content: center; gap: 16px; align-items: center; margin-top: 18px; font-size: 12px; }
+.photo-retry { border: 0; padding: 15px; background: transparent; color: var(--muted); }
+.profile-photo-editor { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.profile-photo-editor > img { width: 70px; height: 70px; border-radius: 50%; object-fit: cover; }
+.profile-photo-editor .text-action { margin: 0; }
+.workspace > .section-head { flex-wrap: wrap; }
+.workspace .tabs { overflow-x: auto; max-width: 100%; scrollbar-width: thin; }
+@media(max-width:700px) {
+ .anniversary-grid, .memory-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+ .life-section-head { align-items: flex-start; flex-wrap: wrap; }
+ .date-random-bar { align-items: flex-start; flex-direction: column; gap: 14px; }
+ .date-random-bar .secondary { align-self: flex-end; }
+ .life-form-grid { grid-template-columns: 1fr 1fr; }
+ .life-form-grid label:first-child { grid-column: 1/-1; }
+ .workspace > .section-head { gap: 10px; }
+ .workspace > .section-head > .primary { margin-left: auto; }
+ .comment-compose { flex-wrap: wrap; }
+ .comment-compose .primary { margin-left: auto; }
+ .anniversary-card { padding: 14px; }
+ .anniversary-count { font-size: 18px; }
+ .life-dialog .memory-grid { grid-template-columns: 1fr 1fr; }
+}

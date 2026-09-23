@@ -20,6 +20,13 @@ try {
     create role authenticated;
     create role anon;
     create schema auth;
+    create schema storage;
+    create table storage.buckets (id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
+    create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text references storage.buckets(id), name text not null, unique(bucket_id,name));
+    alter table storage.objects enable row level security;
+    grant usage on schema storage to authenticated, anon;
+    grant select, insert, update, delete on storage.objects to authenticated;
+
     create table auth.users (id uuid primary key, raw_user_meta_data jsonb default '{}'::jsonb);
     create function auth.uid() returns uuid language sql stable
       as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
@@ -97,6 +104,40 @@ try {
   assert.equal((await db.query("select background_photo from public.couple_spaces where id = $1", [spaceId])).rows[0].background_photo, 'data:image/jpeg;base64,YQ==');
   await rejects("update public.couple_spaces set background_photo = $1 where id = $2", ['data:image/jpeg;base64,' + 'A'.repeat(1500000), spaceId]);
   await rejects("update public.space_members set avatar_url = 'javascript:alert(1)' where user_id = $1", [owner]);
+  const event=(await db.query("insert into public.anniversaries(space_id,created_by,title,event_date) values($1,$2,'Our day','2024-02-29') returning id",[spaceId,owner])).rows[0].id;
+  await db.query("insert into public.wish_plans(wish_id,space_id,date_on,budget) values($1,$2,'2026-10-01',80)",[wishId,spaceId]);
+  await rejects("update public.wish_plans set budget=-1 where wish_id=$1",[wishId]);
+  const memory=(await db.query("insert into public.memories(space_id,created_by,wish_id,byte_size) values($1,$2,$3,1000) returning id",[spaceId,owner,wishId])).rows[0].id;
+  const photoPath=`${spaceId}/${memory}/photo.jpg`;
+  await db.query("insert into storage.objects(bucket_id,name) values('couple-memories',$1)",[photoPath]);
+  await rejects("insert into storage.objects(bucket_id,name) values('couple-memories',$1)",[`${spaceId}/unknown/photo.jpg`]);
+  await db.query("update public.memories set photo_ready=true where id=$1",[memory]);
+  await rejects("insert into storage.objects(bucket_id,name) values('couple-memories',$1)",[`${spaceId}/${memory}/thumb.jpg`]);
+  const comment=(await db.query("insert into public.discussion_comments(space_id,created_by,anniversary_id,body) values($1,$2,$3,'Happy us ❤️') returning id",[spaceId,owner,event])).rows[0].id;
+  await as(partner);
+  assert.equal((await db.query("select count(*)::int as n from storage.objects")).rows[0].n,1);
+  await db.query("update public.wish_plans set partner_task='Book tickets' where wish_id=$1",[wishId]);
+  await db.query("delete from public.discussion_comments where id=$1",[comment]);
+  assert.equal((await db.query("select count(*)::int as n from public.discussion_comments")).rows[0].n,1);
+  await db.query("insert into public.comment_reactions(comment_id,space_id,user_id,emoji) values($1,$2,$3,'❤️')",[comment,spaceId,partner]);
+  await rejects("insert into public.comment_reactions(comment_id,space_id,user_id,emoji) values($1,$2,$3,'👍')",[comment,spaceId,owner]);
+  await as(outsider);
+  for(const table of ['anniversaries','wish_plans','memories','discussion_comments','comment_reactions']) assert.equal((await db.query(`select count(*)::int as n from public.${table}`)).rows[0].n,0);
+  assert.equal((await db.query("select count(*)::int as n from storage.objects")).rows[0].n,0);
+  await rejects("insert into storage.objects(bucket_id,name) values('couple-memories',$1)",[`${spaceId}/${memory}/thumb.jpg`]);
+  await rejects("insert into public.anniversaries(space_id,created_by,title,event_date) values($1,$2,'No','2026-01-01')",[spaceId,outsider]);
+  const otherSpace=(await db.query("select public.create_couple_space('Other') as id")).rows[0].id;
+  await rejects("insert into public.discussion_comments(space_id,created_by,anniversary_id,body) values($1,$2,$3,'Cross space')",[otherSpace,outsider,event]);
+  await rejects("insert into public.memories(space_id,created_by,wish_id,byte_size) values($1,$2,$3,1000)",[otherSpace,outsider,wishId]);
+  await as(owner);
+  await db.query("delete from public.wishes where id=$1",[wishId]);
+  assert.equal((await db.query("select wish_id from public.memories where id=$1",[memory])).rows[0].wish_id,null);
+  await db.query("delete from public.anniversaries where id=$1",[event]);
+  assert.equal((await db.query("select count(*)::int as n from public.comment_reactions")).rows[0].n,0);
+  await db.query("insert into public.memories(space_id,created_by,byte_size) select $1,$2,100 from generate_series(1,199)",[spaceId,owner]);
+  await rejects("insert into public.memories(space_id,created_by,byte_size) values($1,$2,100)",[spaceId,owner]);
+  await db.query("delete from storage.objects where name=$1",[photoPath]);
+  assert.equal((await db.query("select count(*)::int as n from storage.objects")).rows[0].n,0);
   await db.exec("reset role");
   console.log("Database permissions and invitation flow passed.");
 } finally {
