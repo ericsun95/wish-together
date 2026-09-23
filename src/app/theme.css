@@ -85,22 +85,22 @@
 .couple-space {
   --ink: #54463f; --muted: #897970; --line: #dfd3c9;
   --surface: #fffaf3ed; --back: #faf7f2; --accent: #b5786e; --accent-light: #f5e6df;
-  --space-tint: #f8f1e944; --space-panel: #fffaf3d9;
+  --space-tint: #f8f1e918; --space-panel: #fffaf3ad;
   padding: 0 16px 24px;
   color: var(--ink);
   background: linear-gradient(var(--space-tint), var(--space-tint)), var(--couple-photo) center / cover fixed;
   background-color: var(--back);
 }
-.couple-space[data-theme="coast"] { --ink: #354f57; --muted: #607e85; --accent: #507e89; --accent-light: #e0edf0; --line: #cbdde0; --surface: #f5fcfbed; --space-panel: #f4fcfbd9; --space-tint: #e9f4f333; }
-.couple-space[data-theme="garden"] { --ink: #3e503a; --muted: #6a7e61; --accent: #738564; --accent-light: #e6eddd; --line: #d0dbc9; --surface: #f9fcf3ed; --space-panel: #f7fbeed9; --space-tint: #eff5e833; }
-.couple-space[data-theme="city"] { --ink: #f4e9df; --muted: #c1b6ad; --accent: #e0a596; --accent-light: #533e3b; --line: #ffffff2b; --surface: #253039f2; --back: #172127; --space-panel: #253039dd; --space-tint: #10191f55; }
+.couple-space[data-theme="coast"] { --ink: #354f57; --muted: #607e85; --accent: #507e89; --accent-light: #e0edf0; --line: #cbdde0; --surface: #f5fcfbed; --space-panel: #f4fcfbad; --space-tint: #e9f4f314; }
+.couple-space[data-theme="garden"] { --ink: #3e503a; --muted: #6a7e61; --accent: #738564; --accent-light: #e6eddd; --line: #d0dbc9; --surface: #f9fcf3ed; --space-panel: #f7fbeead; --space-tint: #eff5e814; }
+.couple-space[data-theme="city"] { --ink: #f4e9df; --muted: #c1b6ad; --accent: #e0a596; --accent-light: #533e3b; --line: #ffffff2b; --surface: #253039f2; --back: #172127; --space-panel: #253039b8; --space-tint: #10191f33; }
 .couple-space .app-shell {
   --ink: inherit; --muted: inherit; --line: inherit; --surface: inherit;
   --back: inherit; --accent: inherit; --accent-light: inherit;
   background: transparent;
 }
 .couple-space .couple-header, .couple-space[data-photo="true"] .couple-header {
-  background: var(--space-panel); color: var(--ink); border-radius: 0 0 24px 24px; backdrop-filter: blur(12px);
+  background: var(--space-panel); color: var(--ink); border-radius: 0 0 24px 24px; backdrop-filter: blur(2px);
 }
 .couple-space .app-shell > .topbar { max-width: 1040px; margin: 18px auto; padding: 0 24px; border: 1px solid var(--line); border-radius: 16px; background: var(--space-panel); }
 .couple-space .app-shell .workspace { margin: 0 auto; background: var(--space-panel); border: 1px solid var(--line); border-radius: 20px; }
@@ -119,3 +119,15 @@
   .couple-space .brand { font-size: 16px; }
   .couple-space .tabs { gap: 10px; }
 }
+
+/* Keep uploaded photos as clear as curated backgrounds, without the legacy white wash. */
+.couple-space[data-photo="true"] {
+  background: linear-gradient(var(--space-tint), var(--space-tint)), var(--couple-photo) center / cover fixed;
+  background-color: var(--back);
+}
+.couple-space .app-shell > .topbar { backdrop-filter: blur(2px); }
+.couple-space .app-shell .wish-list { backdrop-filter: none; }
+/* Small text needs stronger contrast now that more of the photograph shows through. */
+.couple-space:not([data-theme="city"]) { --muted: #62564f; }
+.couple-space[data-theme="coast"] { --muted: #425f66; }
+.couple-space[data-theme="garden"] { --muted: #4d6046; }
