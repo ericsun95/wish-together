@@ -91,3 +91,11 @@
  .anniversary-count { font-size: 18px; }
  .life-dialog .memory-grid { grid-template-columns: 1fr 1fr; }
 }
+
+.anniversary-presets { margin: 0 0 22px; }
+.anniversary-template-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.anniversary-template { display: inline-flex; align-items: center; gap: 8px; padding: 11px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); font: inherit; font-size: 12px; cursor: pointer; }
+.anniversary-template > span { font-size: 19px; }
+.anniversary-template > svg { color: var(--accent); }
+.anniversary-template:hover { border-color: var(--accent); background: var(--accent-light); }
+.anniversary-template:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
