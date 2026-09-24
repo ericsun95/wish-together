@@ -1,7 +1,8 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import { ArrowUpRight, Camera, Check, Filter, Heart, LayoutDashboard, Link2, ListPlus, Map, MapPin, PawPrint, MessageCircle, Palette, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Compass, Camera, Check, Filter, Heart, LayoutDashboard, Link2, ListPlus, Map, MapPin, PawPrint, MessageCircle, Palette, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { prepareBackgroundPhoto } from "@/lib/photo";
 import { SharedPet } from "@/components/shared-pet";
 import { LifeDashboard, DateAndRandom } from "@/components/life-dashboard";
@@ -14,10 +15,12 @@ import { supabase } from "@/lib/supabase";
 
 import { THEMES, themeNames, themeBackground, type Theme } from "@/lib/themes";
 
+const SoloAdventure = dynamic(() => import("@/components/adventure/solo-adventure").then(module => module.SoloAdventure), { loading: () => <div className="life-empty" role="status">🐾 …</div> });
+
 type ChecklistItem = { id: string; label: string; completed: boolean; position: number };
 type WishStatus = "wanted" | "planned" | "done";
 type Wish = { id: string; title: string; note: string; url: string; address: string; category: string; status: WishStatus; plannedDate: string; completionNote: string; createdAt: string; checklist: ChecklistItem[] };
-type View = "wishes" | "done" | "dashboard" | "map" | "life" | "pet";
+type View = "wishes" | "done" | "dashboard" | "map" | "life" | "pet" | "adventure";
 
 const WISHES_KEY = "wish-together:wishes";
 const LOCALE_KEY = "wish-together:locale";
@@ -179,7 +182,7 @@ export default function Home() {
 
   const t = messages[locale];
   const visible = wishes.filter((wish) => {
-    if (view === "dashboard" || view === "map" || view === "life" || view === "pet") return false;
+    if (view === "dashboard" || view === "map" || view === "life" || view === "pet" || view === "adventure") return false;
     if ((wish.status === "done") !== (view === "done")) return false;
     if (statusFilter !== "all" && wish.status !== statusFilter) return false;
     return categoryFilter === "all" || wish.category === categoryFilter;
@@ -363,15 +366,16 @@ export default function Home() {
       </header>
 
       <section className="workspace">
-        {spaceId && view !== "life" && <DateAndRandom spaceId={spaceId} zh={locale==="zh-CN"} wishes={wishes} onWish={wish=>setExperienceId(wish.id)}/>}
+        {spaceId && view !== "life" && view !== "adventure" && <DateAndRandom spaceId={spaceId} zh={locale==="zh-CN"} wishes={wishes} onWish={wish=>setExperienceId(wish.id)}/>}
         <div className="section-head">
           <div className="tabs" role="tablist">
             <button role="tab" aria-selected={view === "wishes"} onClick={() => { setView("wishes"); setStatusFilter("all"); }}>{t.wishes}<span>{wishes.filter((w) => w.status !== "done").length}</span></button>
             <button role="tab" aria-selected={view === "done"} onClick={() => { setView("done"); setStatusFilter("all"); }}>{t.done}<span>{wishes.filter((w) => w.status === "done").length}</span></button>
             <button role="tab" aria-selected={view === "dashboard"} onClick={() => setView("dashboard")}><LayoutDashboard size={15} />{t.dashboard}</button>
+            <button role="tab" aria-selected={view === "map"} onClick={() => setView("map")}><Map size={15} />{t.map}</button>
             <button role="tab" aria-selected={view === "life"} onClick={()=>setView("life")}><Heart size={15}/>{locale==="zh-CN"?"我们的日常":"Our life"}</button>
             <button role="tab" aria-selected={view === "pet"} onClick={()=>setView("pet")}><PawPrint size={15}/>{locale==="zh-CN"?"我们的小窝":"Our pet"}</button>
-            <button role="tab" aria-selected={view === "map"} onClick={() => setView("map")}><Map size={15} />{t.map}</button>
+            <button role="tab" aria-selected={view === "adventure"} onClick={()=>setView("adventure")}><Compass size={15}/>{locale==="zh-CN"?"一起冒险":"Adventures"}</button>
           </div>
           <button className="primary" type="button" onClick={openNewWish}><Plus size={18} />{t.add}</button>
         </div>
@@ -390,7 +394,7 @@ export default function Home() {
           {hasFilters && <button type="button" className="clear-filters" onClick={() => { setStatusFilter("all"); setCategoryFilter("all"); }}><X size={14} />{t.clearFilters}</button>}
         </div>}
 
-        {view === "pet" ? (spaceId ? <SharedPet key={spaceId} spaceId={spaceId} zh={locale==="zh-CN"}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起养宠物。":"Sign in to raise your pet together."}</p>) : view === "life" ? (spaceId ? <LifeDashboard spaceId={spaceId} zh={locale==="zh-CN"} wishes={wishes} onWish={wish=>setExperienceId(wish.id)} onBackground={memoryBackground}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起记录纪念日和回忆。":"Sign in to share your dates and memories."}</p>) : view === "map" ? <div className="map-view">
+        {view === "adventure" ? <SoloAdventure spaceId={spaceId} zh={locale==="zh-CN"}/> : view === "pet" ? (spaceId ? <SharedPet key={spaceId} spaceId={spaceId} zh={locale==="zh-CN"}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起养宠物。":"Sign in to raise your pet together."}</p>) : view === "life" ? (spaceId ? <LifeDashboard spaceId={spaceId} zh={locale==="zh-CN"} wishes={wishes} onWish={wish=>setExperienceId(wish.id)} onBackground={memoryBackground}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起记录纪念日和回忆。":"Sign in to share your dates and memories."}</p>) : view === "map" ? <div className="map-view">
           <div className="map-heading"><h1>{t.mapTitle}</h1><p>{mapWish ? mapSource : t.mapEmpty}</p></div>
           <form className="map-search" onSubmit={(event) => { event.preventDefault(); setMapSearchQuery(getMapQuery(mapSearch)); }}>
             <Search size={17} aria-hidden="true" />
@@ -503,7 +507,7 @@ export default function Home() {
           </div>
         </div>
       </div>}
-      {spaceId && <RoamingPet key={spaceId} spaceId={spaceId} zh={locale === "zh-CN"} onOpenHome={() => { setView('pet'); requestAnimationFrame(()=>document.querySelector('.section-head')?.scrollIntoView({block:'start'})); }}/> }
+      {spaceId && view !== "adventure" && <RoamingPet key={spaceId} spaceId={spaceId} zh={locale === "zh-CN"} onOpenHome={() => { setView('pet'); requestAnimationFrame(()=>document.querySelector('.section-head')?.scrollIntoView({block:'start'})); }}/> }
     </main>
     </SpaceGate>
   );
