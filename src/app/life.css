@@ -173,3 +173,8 @@
  .header-date-ribbon .header-anniversary { width: 100%; padding: 8px 10px; font-size: 11px; border-radius: 16px; }
  .header-date-ribbon > :only-child { grid-column: 1 / -1; width: fit-content; justify-self: center; }
 }
+
+@media(max-width:600px) {
+ .workspace .tabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); width:100%; gap:4px 8px; overflow:visible; }
+ .workspace .tabs button { justify-content:center; padding:12px 2px; font-size:12px; }
+}
