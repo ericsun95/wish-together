@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import type { LifeMember } from '@/lib/life';
 import { LifeModal, MiniAvatar } from './life-ui';
 import { PET_POSES, type PetMood } from '@/lib/pet-play';
+import { PetCarry } from './pet-carry';
 import { PetPortrait } from './pet-portrait';
 import { PetPlayground } from './pet-playground';
 
@@ -131,7 +132,7 @@ function PetHome({ spaceId, zh }: { spaceId: string; zh: boolean }) {
           <p className="life-muted">{zh ? '每个空间共同养一只，领养后名字可以再改。' : 'One shared pet per space. You can rename them later.'}</p>
         </div>
       </form> : <>
-        <div className="pet-card"><div className="pet-scene"><span className="pet-level">Lv. {level}</span><PetPortrait species={pet.species} happy={!!notice} mood={pose}/><div className="pet-pose-picker" role="group" aria-label={zh?"宠物姿态":"Pet poses"}>{PET_POSES.map(item=><button type="button" key={item.mood} aria-pressed={pose===item.mood} onClick={()=>{setNotice('');setPose(item.mood);}}>{item.emoji} {zh?item.zh:item.en}</button>)}</div><p>{zh ? '有你们在，每天都很开心' : 'Every day is happier with you two'}</p></div>
+        <div className="pet-card"><div className="pet-scene"><span className="pet-level">Lv. {level}</span><PetCarry spaceId={spaceId} zh={zh}><PetPortrait species={pet.species} happy={!!notice} mood={pose}/></PetCarry><div className="pet-pose-picker" role="group" aria-label={zh?"宠物姿态":"Pet poses"}>{PET_POSES.map(item=><button type="button" key={item.mood} aria-pressed={pose===item.mood} onClick={()=>{setNotice('');setPose(item.mood);}}>{item.emoji} {zh?item.zh:item.en}</button>)}</div><p>{zh ? '有你们在，每天都很开心' : 'Every day is happier with you two'}</p></div>
           <div className="pet-details"><div className="pet-title"><h3>{pet.name}</h3><button className="icon-button" disabled={busy} aria-label={zh ? '修改宠物名字' : 'Rename pet'} onClick={() => { setName(pet.name); setRenaming(true); }}><Pencil size={15}/></button></div>
             <p className="life-muted">{zh ? (level < 3 ? '初来乍到的小宝贝' : level < 6 ? '越来越亲密的小伙伴' : '你们最默契的家人') : (level < 3 ? 'Your sweet new arrival' : level < 6 ? 'Your growing little companion' : 'One of the family')}</p>
             <div className="pet-growth-label"><span><Sparkles size={14}/> {zh ? '共同成长' : 'Growing together'}</span><span>{progress} / 100</span></div><progress max={100} value={progress} aria-label={zh ? '升到下一级的成长值' : 'Growth toward next level'}/>

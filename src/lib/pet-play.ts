@@ -3,7 +3,7 @@ export function keepPetOnScreen(x: number, y: number, width: number, height: num
 }
 
 export const PET_SIZE = 128;
-export type PetMood = 'idle' | 'walk' | 'run' | 'happy' | 'sleep' | 'play' | 'sit' | 'jump' | 'roll' | 'wave' | 'groom' | 'spin';
+export type PetMood = 'idle' | 'walk' | 'run' | 'happy' | 'sleep' | 'play' | 'sit' | 'jump' | 'roll' | 'wave' | 'groom' | 'spin' | 'held';
 export const PET_POSES: { mood: PetMood; zh: string; en: string; emoji: string }[] = [
   { mood: 'sit', zh: '坐下', en: 'Sit', emoji: '🐾' },
   { mood: 'jump', zh: '跳一跳', en: 'Jump', emoji: '✨' },
