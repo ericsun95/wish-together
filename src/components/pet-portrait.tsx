@@ -1,4 +1,6 @@
-export function PetPortrait({ species, happy = false, mood = 'idle' }: { species: 'cat' | 'dog'; happy?: boolean; mood?: 'idle' | 'walk' | 'happy' | 'sleep' | 'play' }) {
+import { Pet3D } from './pet-3d';
+import type { PetMood } from '@/lib/pet-play';
+export function PetIllustration({ species, happy = false, mood = 'idle' }: { species: 'cat' | 'dog'; happy?: boolean; mood?: 'idle' | 'walk' | 'happy' | 'sleep' | 'play' }) {
   return <svg viewBox="0 0 280 240" className={`pet-portrait ${happy ? 'pet-happy' : ''} pet-mood-${mood}`} aria-hidden="true">
     <ellipse cx="140" cy="221" rx="79" ry="10" fill="currentColor" opacity=".08"/>
     <path className="pet-tail" d="M183 186Q246 160 232 198Q220 216 184 207" fill="none" stroke="#d89964" strokeWidth="18" strokeLinecap="round"/>
@@ -18,3 +20,5 @@ export function PetPortrait({ species, happy = false, mood = 'idle' }: { species
   </svg>;
 }
 
+
+export function PetPortrait({species,happy=false,mood="idle",heading=0}: {species:"cat"|"dog";happy?:boolean;mood?:PetMood;heading?:number}) { return <Pet3D species={species} mood={happy?"happy":mood} heading={heading}><PetIllustration species={species} mood={mood==="sleep"?"sleep":"idle"} happy={happy}/></Pet3D>; }

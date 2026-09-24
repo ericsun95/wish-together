@@ -2,17 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
 import { supabase } from '@/lib/supabase';
-import { keepPetOnScreen } from '@/lib/pet-play';
+import { keepPetOnScreen, PET_SIZE, PET_POSES, fullScreenPetTarget, type PetMood } from '@/lib/pet-play';
 import { PetPortrait } from './pet-portrait';
 
 type Friend = { name: string; species: 'cat' | 'dog' };
-type Mood = 'idle' | 'walk' | 'happy' | 'sleep' | 'play';
+type Mood = PetMood;
 
 export function RoamingPet({ spaceId, zh, onOpenHome }: { spaceId: string; zh: boolean; onOpenHome: () => void }) {
   const [pet, setPet] = useState<Friend | null>(null);
   const [position, setPosition] = useState({ x: 16, y: 16 });
   const [viewport, setViewport] = useState({ width: 390, height: 844 });
   const [mood, setMood] = useState<Mood>('idle');
+  const [heading,setHeading] = useState(0);
+  const roamStep = useRef(0);
   const [menu, setMenu] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -41,8 +43,8 @@ export function RoamingPet({ spaceId, zh, onOpenHome }: { spaceId: string; zh: b
     try { localStorage.setItem(storageKey, JSON.stringify({ hidden: nextHidden, paused: nextPaused })); } catch { /* Preferences are optional. */ }
   }
   const moveTo = useCallback((x: number, y: number) => {
-    const next = keepPetOnScreen(x, y, window.innerWidth, window.innerHeight);
-    current.current = next; setPosition(next);
+    const next = keepPetOnScreen(x, y, window.innerWidth, window.innerHeight, PET_SIZE);
+    setHeading(Math.atan2(next.x-current.current.x,next.y-current.current.y)); current.current = next; setPosition(next);
   }, []);
 
   useEffect(() => {
@@ -89,8 +91,8 @@ export function RoamingPet({ spaceId, zh, onOpenHome }: { spaceId: string; zh: b
     }
     const timer = window.setInterval(() => {
       if (motionTimer.current) return;
-      moveTo(12 + Math.random() * (window.innerWidth - 120), window.innerHeight * (.5 + Math.random() * .33));
-      setMood('walk');
+      const target=fullScreenPetTarget(window.innerWidth,window.innerHeight,roamStep.current++); moveTo(target.x,target.y);
+      setMood(roamStep.current%2?'run':'walk');
       motionTimer.current = setTimeout(() => { motionTimer.current = null; setMood('idle'); }, 2400);
     }, 6500);
     return () => window.clearInterval(timer);
@@ -112,7 +114,7 @@ export function RoamingPet({ spaceId, zh, onOpenHome }: { spaceId: string; zh: b
   }
   function toss() {
     cancelMotion(); setSleeping(false); setMenu(false);
-    const next = keepPetOnScreen(current.current.x > viewport.width / 2 ? 18 : viewport.width - 114, Math.max(viewport.height * .55, current.current.y), viewport.width, viewport.height);
+    const next = keepPetOnScreen(current.current.x > viewport.width / 2 ? 18 : viewport.width - 114, Math.max(viewport.height * .55, current.current.y), viewport.width, viewport.height, PET_SIZE);
     setToy(next); moveTo(next.x, next.y); setMood('walk'); say(zh ? '我来接住它！' : 'I’ll catch it!');
     motionTimer.current = setTimeout(() => { motionTimer.current = null; setToy(null); setMood('happy'); say(zh ? '接到啦！再来一次？🎾' : 'Got it! Again? 🎾'); }, reduced ? 150 : 2400);
   }
@@ -133,7 +135,7 @@ export function RoamingPet({ spaceId, zh, onOpenHome }: { spaceId: string; zh: b
   if (!pet || obstructed || !pageVisible) return null;
   if (hidden) return <button type="button" className="pet-restore" aria-label={zh ? '叫宠物出来' : 'Show pet companion'} onClick={() => { setHidden(false); remember(false, paused); }}>🐾<span>{zh ? '叫它出来' : 'Come out'}</span></button>;
   const panelLeft = Math.max(8, Math.min(position.x - 85, viewport.width - 280));
-  const panelTop = position.y >= 255 ? position.y - 245 : Math.min(position.y + 98, viewport.height - 255);
+  const panelTop = Math.max(8, Math.min(position.y - 360, viewport.height - 380));
   return <div ref={root} className="roaming-pet-layer" data-quiet={paused || reduced}>
     {toy && <span className="roaming-pet-toy" style={{ left: toy.x + 34, top: toy.y + 66 }} aria-hidden="true">🎾</span>}
     <div className={`roaming-pet ${dragging ? 'is-dragging' : ''}`} style={{ left: position.x, top: position.y }}>
@@ -142,12 +144,13 @@ export function RoamingPet({ spaceId, zh, onOpenHome }: { spaceId: string; zh: b
       <button ref={petButton} type="button" className="roaming-pet-body" aria-label={zh ? `和${pet.name}互动` : `Play with ${pet.name}`} aria-expanded={menu} aria-controls="pet-companion-controls" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={() => { drag.current = null; setDragging(false); }} onPointerCancel={() => { drag.current = null; setDragging(false); moved.current = false; }} onClick={event => { if (moved.current && event.detail !== 0) { moved.current = false; return; } cancelMotion(); setMenu(!menu); if (sleeping) say(zh ? '嘘，我在做一个甜甜的梦…' : 'Shh… dreaming sweet dreams…'); else say(zh ? '点点摸摸头，或者陪我玩吧！' : 'A head pat, or a little game?'); }} onKeyDown={event => {
         const delta: Record<string, [number, number]> = { ArrowLeft: [-24, 0], ArrowRight: [24, 0], ArrowUp: [0, -24], ArrowDown: [0, 24] };
         if (delta[event.key]) { event.preventDefault(); cancelMotion(); setPaused(true); remember(hidden, true); moveTo(position.x + delta[event.key][0], position.y + delta[event.key][1]); }
-      }}><PetPortrait species={pet.species} mood={sleeping ? 'sleep' : mood}/></button>
+      }}><PetPortrait species={pet.species} mood={sleeping ? 'sleep' : mood} heading={heading}/></button>
       <span className="roaming-pet-name">{pet.name}</span>
     </div>
     {menu && <div id="pet-companion-controls" className="pet-companion-controls" style={{ left: panelLeft, top: Math.max(8, panelTop) }} role="group" aria-label={zh ? '宠物互动' : 'Pet interactions'}>
       <div className="pet-companion-title"><strong>{pet.name}</strong><button type="button" aria-label={zh ? '关闭宠物菜单' : 'Close pet menu'} onClick={() => { setMenu(false); petButton.current?.focus(); }}>×</button></div>
       <div className="pet-companion-actions"><button type="button" onClick={pat}>{zh ? '🖐 摸摸头' : '🖐 Head pats'}</button><button type="button" onClick={toss}>{zh ? '🎾 丢个球' : '🎾 Toss a ball'}</button><button type="button" onClick={() => { cancelMotion(); setSleeping(!sleeping); setMenu(false); say(sleeping ? (zh ? '睡醒啦！来玩吧～' : 'Awake! Let’s play!') : (zh ? '晚安，梦里也有你 ♡' : 'Sweet dreams with you ♡')); }}>{sleeping ? (zh ? '☀️ 叫醒它' : '☀️ Wake up') : (zh ? '🌙 睡一会儿' : '🌙 Take a nap')}</button><button type="button" onClick={() => { setMenu(false); onOpenHome(); }}>{zh ? '🎮 去游乐场' : '🎮 Playground'}</button></div>
+      <div className="pet-companion-actions">{PET_POSES.map(pose=><button type="button" key={pose.mood} onClick={()=>{cancelMotion();setSleeping(false);setMood(pose.mood);setHeading(0);setMenu(false);say(zh?pose.zh:pose.en);}}>{pose.emoji} {zh?pose.zh:pose.en}</button>)}</div>
       <label className="pet-roam-toggle"><input type="checkbox" checked={!paused && !reduced} disabled={reduced} onChange={event => { cancelMotion(); setPaused(!event.target.checked); remember(hidden, !event.target.checked); }}/>{zh ? '自由散步' : 'Wander around'}</label>
       <div className="pet-companion-footer"><small>{reduced ? (zh ? '已跟随系统减少动画' : 'Reduced motion is on') : (zh ? '拖动可挪位置 · 方向键也可以' : 'Drag to move · or use arrow keys')}</small><button type="button" onClick={() => { cancelMotion(); setMenu(false); setHidden(true); remember(true, paused); }}>{zh ? '收起' : 'Hide'}</button></div>
     </div>}

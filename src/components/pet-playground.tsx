@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from 'react';
-import { PetPortrait } from './pet-portrait';
+import { PetIllustration as PetPortrait } from './pet-portrait';
+
+import { Pet3D } from './pet-3d';
 
 type Game = 'fetch' | 'stars' | 'hide';
 const games: { id: Game; emoji: string; zh: string; en: string }[] = [
@@ -70,7 +72,8 @@ export function PetPlayground({ species, name, zh, busy, onComplete }: {
     <div className="pet-game-tabs" role="group" aria-label={zh ? '选择小游戏' : 'Choose a game'}>{games.map(item => <button type="button" key={item.id} disabled={busy} aria-pressed={game === item.id} onClick={() => reset(item.id)}><span>{item.emoji}</span>{zh ? item.zh : item.en}</button>)}</div>
     <p className="life-muted">{game === 'fetch' ? (zh ? '把球丢出去，让它接住 3 次！' : 'Throw the ball for 3 happy catches!') : game === 'stars' ? (zh ? '点亮 5 颗星星，带它一起追光。' : 'Tap 5 stars and chase their sparkle together.') : (zh ? '它躲到哪棵小树后面了？点点看。' : 'Which little tree is your pet hiding behind? Tap to peek.')}</p>
     <div className={`pet-play-field pet-game-${game}`}>
-      <span className="pet-field-cloud" aria-hidden="true">☁</span><span className="pet-field-flower" aria-hidden="true">🌼</span>
+      <Pet3D species={species} game={{game,position,target,score,found,searched,moving,complete}}><span className="pet-field-cloud" aria-hidden="true">☁</span><span className="pet-field-flower" aria-hidden="true">🌼</span>
+      </Pet3D>
       {game === 'hide' && <div className="pet-hiding-spots">{[0, 1, 2].map(index => <button type="button" key={index} aria-label={zh ? `查看第 ${index + 1} 棵树` : `Look behind tree ${index + 1}`} disabled={busy || complete || searched.includes(index)} onClick={() => search(index)}>{found && index === hiding.current ? '💛' : searched.includes(index) ? '🍃' : '🌳'}</button>)}</div>}
       {(game !== 'hide' || found) && <div className="pet-field-friend" style={{ left: `${position}%` }}><PetPortrait species={species} mood={moving ? 'walk' : complete ? 'happy' : 'play'}/></div>}
       {game === 'fetch' && moving && <span className="pet-field-ball" style={{ left: `${target}%` }} aria-hidden="true">🎾</span>}

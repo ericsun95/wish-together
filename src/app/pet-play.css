@@ -56,3 +56,21 @@
 .pet-restore span { font-size: 11px; }
 @media(max-width: 600px) { .pet-playground { padding: 18px 12px; } .pet-game-tabs { gap: 5px; } .pet-game-tabs button { padding: 9px; font-size: 11px; } .pet-play-field { height: 230px; } .pet-field-friend { width: 104px; } }
 @media(prefers-reduced-motion: reduce) { .pet-portrait, .pet-portrait *, .pet-field-friend, .roaming-pet { animation: none !important; transition: none !important; } }
+
+.pet-3d{position:relative;width:100%;aspect-ratio:280/240;max-width:280px;margin:auto;pointer-events:none}
+.pet-3d canvas{position:absolute;inset:0;width:100%;height:100%}
+.pet-3d>.pet-portrait{width:100%;height:100%}
+.roaming-pet,.roaming-pet-body{width:128px!important;height:112px!important}
+.roaming-pet .pet-3d{width:128px;height:112px}
+.roaming-pet-name{width:128px!important}
+.pet-companion-controls{max-height:calc(100dvh - 16px);overflow-y:auto}
+.pet-3d-game{position:absolute;inset:0;max-width:none;width:100%;height:100%;aspect-ratio:auto}
+.pet-play-field:has([data-renderer="3d"]) .pet-field-friend,.pet-play-field:has([data-renderer="3d"]) .pet-field-ball{visibility:hidden}
+.pet-play-field:has([data-renderer="3d"]) .pet-hiding-spots button,.pet-play-field:has([data-renderer="3d"]) .pet-field-star{color:transparent;text-shadow:none;background:transparent;box-shadow:none}
+.pet-play-field:has([data-renderer="3d"]) .pet-field-star:focus-visible,.pet-hiding-spots button:focus-visible{outline:3px solid var(--accent);outline-offset:4px}
+.pet-pose-picker{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin:12px auto;max-width:320px}
+.pet-pose-picker button{font:inherit;font-size:11px;padding:8px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink)}
+.pet-pose-picker button[aria-pressed=true]{background:var(--accent-light);border-color:var(--accent)}
+.pet-companion-actions+.pet-companion-actions{margin-top:8px}
+.pet-play-field:has([data-renderer="3d"]) .pet-field-star{transform:translate(-50%,-50%);border-color:transparent}
+.roaming-pet-name{max-width:128px}
