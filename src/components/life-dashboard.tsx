@@ -5,12 +5,10 @@ import { supabase } from '@/lib/supabase';
 import { localToday, pickWish, type LifeWish, type WishPlan } from '@/lib/life';
 import { LifeModal } from './life-ui';
 import { Anniversaries } from './anniversaries';
-import { SharedPet } from './shared-pet';
 import { Memories } from './memories';
-export function LifeDashboard({spaceId,zh,wishes,onWish,onBackground,petOpenRequest=0}:{spaceId:string;zh:boolean;wishes:LifeWish[];onWish:(wish:LifeWish)=>void;onBackground:(photo:string)=>Promise<void>;petOpenRequest?:number}){
- const [tab,setTab]=useState<'dates'|'album'|'pet'>('dates');
- useEffect(()=>{if(!petOpenRequest)return;setTab('pet');const frame=requestAnimationFrame(()=>document.querySelector('.life-dashboard')?.scrollIntoView({block:'start'}));return()=>cancelAnimationFrame(frame);},[petOpenRequest]);
- return <div className="life-dashboard"><div className="life-subnav"><button aria-pressed={tab==='dates'} onClick={()=>setTab('dates')}>{zh?'💕 纪念日':'💕 Special dates'}</button><button aria-pressed={tab==='album'} onClick={()=>setTab('album')}>{zh?'📷 回忆相册':'📷 Memories'}</button><button aria-pressed={tab==='pet'} onClick={()=>setTab('pet')}>{zh?'🐾 我们的小窝':'🐾 Our pet'}</button></div><DateAndRandom spaceId={spaceId} zh={zh} wishes={wishes} onWish={onWish}/>{tab==='dates'?<Anniversaries spaceId={spaceId} zh={zh}/>:tab==='pet'?<SharedPet key={spaceId} spaceId={spaceId} zh={zh}/>:<Memories spaceId={spaceId} zh={zh} wishes={wishes} onBackground={onBackground}/>}</div>;
+export function LifeDashboard({spaceId,zh,wishes,onWish,onBackground}:{spaceId:string;zh:boolean;wishes:LifeWish[];onWish:(wish:LifeWish)=>void;onBackground:(photo:string)=>Promise<void>}){
+ const [tab,setTab]=useState<'dates'|'album'>('dates');
+ return <div className="life-dashboard"><div className="life-subnav"><button aria-pressed={tab==='dates'} onClick={()=>setTab('dates')}>{zh?'💕 纪念日':'💕 Special dates'}</button><button aria-pressed={tab==='album'} onClick={()=>setTab('album')}>{zh?'📷 回忆相册':'📷 Memories'}</button></div><DateAndRandom spaceId={spaceId} zh={zh} wishes={wishes} onWish={onWish}/>{tab==='dates'?<Anniversaries spaceId={spaceId} zh={zh}/>:<Memories spaceId={spaceId} zh={zh} wishes={wishes} onBackground={onBackground}/>}</div>;
 }
 export function DateAndRandom({spaceId,zh,wishes,onWish}:{spaceId:string;zh:boolean;wishes:LifeWish[];onWish:(wish:LifeWish)=>void}){
  const [plans,setPlans]=useState<WishPlan[]>([]),[open,setOpen]=useState(false),[category,setCategory]=useState(''),[picked,setPicked]=useState<LifeWish|null>(null),[error,setError]=useState('');
