@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
 import { supabase } from '@/lib/supabase';
 import { keepPetOnScreen, PET_SIZE, PET_POSES, fullScreenPetTarget, type PetMood } from '@/lib/pet-play';
+import type { PetCarryDetail } from './pet-carry';
 import { PetPortrait } from './pet-portrait';
 
 type Friend = { name: string; species: 'cat' | 'dog' };
@@ -15,6 +16,7 @@ export function RoamingPet({ spaceId, zh, onOpenHome }: { spaceId: string; zh: b
   const [mood, setMood] = useState<Mood>('idle');
   const [heading,setHeading] = useState(0);
   const roamStep = useRef(0);
+  const released = useRef(false);
   const [menu, setMenu] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -72,7 +74,7 @@ export function RoamingPet({ spaceId, zh, onOpenHome }: { spaceId: string; zh: b
     const motion = () => setReduced(media.matches); motion(); media.addEventListener('change', motion);
     const check = () => {
       const element = document.activeElement;
-      setObstructed(!!document.querySelector('[role="dialog"], [aria-modal="true"], .pet-playground') || (!root.current?.contains(element) && !!element?.matches('input, textarea, select, [contenteditable="true"]')));
+      setObstructed((!!document.querySelector('[role="dialog"], [aria-modal="true"]') || (!released.current && !!document.querySelector('.pet-playground'))) || (!root.current?.contains(element) && !!element?.matches('input, textarea, select, [contenteditable="true"]')));
       setPageVisible(!document.hidden);
     };
     const observer = new MutationObserver(check); observer.observe(document.body, { childList: true, subtree: true }); check();
@@ -84,6 +86,18 @@ export function RoamingPet({ spaceId, zh, onOpenHome }: { spaceId: string; zh: b
       if (bubbleTimer.current) clearTimeout(bubbleTimer.current);
     };
   }, [storageKey, moveTo]);
+
+  useEffect(() => {
+    const carry = (event:Event) => {
+      const detail=(event as CustomEvent<PetCarryDetail>).detail;
+      if(detail.spaceId!==spaceId)return;
+      released.current=true;cancelMotion();setBubble('');setObstructed(false);setHidden(false);setPaused(true);setSleeping(false);setMenu(false);
+      setDragging(detail.holding);moveTo(detail.x,detail.y);setHeading(-.25);setMood(detail.holding?'held':'sit');
+      if(!detail.holding)try {localStorage.setItem(storageKey,JSON.stringify({hidden:false,paused:true}));}catch{/* Optional preference. */}
+    };
+    window.addEventListener('pet-carry',carry);
+    return()=>window.removeEventListener('pet-carry',carry);
+  },[spaceId,storageKey,cancelMotion,moveTo]);
 
   useEffect(() => {
     if (hidden || paused || reduced || sleeping || menu || dragging || obstructed || !pageVisible) {
@@ -119,17 +133,25 @@ export function RoamingPet({ spaceId, zh, onOpenHome }: { spaceId: string; zh: b
     motionTimer.current = setTimeout(() => { motionTimer.current = null; setToy(null); setMood('happy'); say(zh ? '接到啦！再来一次？🎾' : 'Got it! Again? 🎾'); }, reduced ? 150 : 2400);
   }
   function pointerDown(event: PointerEvent<HTMLButtonElement>) {
-    if (event.button !== 0) return;
+    if (!event.isPrimary || event.button !== 0) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     drag.current = { x: bounds.left, y: bounds.top, startX: event.clientX, startY: event.clientY }; moved.current = false;
+    cancelMotion(); setDragging(true); moveTo(bounds.left,bounds.top);
     event.currentTarget.setPointerCapture(event.pointerId);
   }
   function pointerMove(event: PointerEvent<HTMLButtonElement>) {
     if (!drag.current) return;
     const dx = event.clientX - drag.current.startX, dy = event.clientY - drag.current.startY;
     if (!moved.current && Math.hypot(dx, dy) < 6) return;
-    if (!moved.current) { moved.current = true; cancelMotion(); setDragging(true); setMenu(false); setPaused(true); remember(hidden, true); }
-    moveTo(drag.current.x + dx, drag.current.y + dy);
+    if (!moved.current) { moved.current = true; cancelMotion(); setSleeping(false); setDragging(true); setMenu(false); setPaused(true); remember(hidden, true); }
+    moveTo(drag.current.x + dx, drag.current.y + dy); setHeading(-.25); setMood('held');
+  }
+
+  function finishDrag(event:PointerEvent<HTMLButtonElement>) {
+    if(!drag.current)return;
+    drag.current=null;setDragging(false);
+    if(moved.current){setMood('sit');setHeading(-.25);say(zh?'在这里陪着你 ♡':'Right here with you ♡');}
+    if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);
   }
 
   if (!pet || obstructed || !pageVisible) return null;
@@ -141,11 +163,11 @@ export function RoamingPet({ spaceId, zh, onOpenHome }: { spaceId: string; zh: b
     <div className={`roaming-pet ${dragging ? 'is-dragging' : ''}`} style={{ left: position.x, top: position.y }}>
       {bubble && <span className="roaming-pet-bubble" style={position.y < 130 ? { top: 96, bottom: 'auto' } : undefined} role="status">{bubble}</span>}
       {sleeping && <span className="pet-sleep-label" aria-hidden="true">z Z z</span>}
-      <button ref={petButton} type="button" className="roaming-pet-body" aria-label={zh ? `和${pet.name}互动` : `Play with ${pet.name}`} aria-expanded={menu} aria-controls="pet-companion-controls" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={() => { drag.current = null; setDragging(false); }} onPointerCancel={() => { drag.current = null; setDragging(false); moved.current = false; }} onClick={event => { if (moved.current && event.detail !== 0) { moved.current = false; return; } cancelMotion(); setMenu(!menu); if (sleeping) say(zh ? '嘘，我在做一个甜甜的梦…' : 'Shh… dreaming sweet dreams…'); else say(zh ? '点点摸摸头，或者陪我玩吧！' : 'A head pat, or a little game?'); }} onKeyDown={event => {
+      <button ref={petButton} type="button" className="roaming-pet-body" aria-label={zh ? `和${pet.name}互动` : `Play with ${pet.name}`} aria-expanded={menu} aria-controls="pet-companion-controls" onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={finishDrag} onPointerCancel={finishDrag} onLostPointerCapture={finishDrag} onClick={event => { if (moved.current && event.detail !== 0) { moved.current = false; return; } cancelMotion(); setMenu(!menu); if (sleeping) say(zh ? '嘘，我在做一个甜甜的梦…' : 'Shh… dreaming sweet dreams…'); else say(zh ? '点点摸摸头，或者陪我玩吧！' : 'A head pat, or a little game?'); }} onKeyDown={event => {
         const delta: Record<string, [number, number]> = { ArrowLeft: [-24, 0], ArrowRight: [24, 0], ArrowUp: [0, -24], ArrowDown: [0, 24] };
         if (delta[event.key]) { event.preventDefault(); cancelMotion(); setPaused(true); remember(hidden, true); moveTo(position.x + delta[event.key][0], position.y + delta[event.key][1]); }
       }}><PetPortrait species={pet.species} mood={sleeping ? 'sleep' : mood} heading={heading}/></button>
-      <span className="roaming-pet-name">{pet.name}</span>
+      <span className="roaming-pet-name">{dragging ? (zh?'抱起来啦':'Picked up') : pet.name}</span>
     </div>
     {menu && <div id="pet-companion-controls" className="pet-companion-controls" style={{ left: panelLeft, top: Math.max(8, panelTop) }} role="group" aria-label={zh ? '宠物互动' : 'Pet interactions'}>
       <div className="pet-companion-title"><strong>{pet.name}</strong><button type="button" aria-label={zh ? '关闭宠物菜单' : 'Close pet menu'} onClick={() => { setMenu(false); petButton.current?.focus(); }}>×</button></div>

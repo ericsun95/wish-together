@@ -21,4 +21,4 @@ export function PetIllustration({ species, happy = false, mood = 'idle' }: { spe
 }
 
 
-export function PetPortrait({species,happy=false,mood="idle",heading=0}: {species:"cat"|"dog";happy?:boolean;mood?:PetMood;heading?:number}) { return <Pet3D species={species} mood={happy?"happy":mood} heading={heading}><PetIllustration species={species} mood={mood==="sleep"?"sleep":"idle"} happy={happy}/></Pet3D>; }
+export function PetPortrait({species,happy=false,mood="idle",heading=-.35}: {species:"cat"|"dog";happy?:boolean;mood?:PetMood;heading?:number}) { return <Pet3D species={species} mood={happy?"happy":mood} heading={heading}><PetIllustration species={species} mood={mood==="sleep"?"sleep":"idle"} happy={happy}/></Pet3D>; }
