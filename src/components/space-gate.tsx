@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ArrowRight, Copy, Heart, LogIn, LogOut, Plus, Pencil, RotateCcw, UserRoundPlus } from "lucide-react";
 import { CoupleProfile } from "./couple-profile";
-import { anniversaryDays, type Anniversary, type LifeWish } from "@/lib/life";
+import { daysTogether, type Anniversary, type LifeWish } from "@/lib/life";
 import { CoupleDates } from "./couple-dates";
 import type { User } from "@supabase/supabase-js";
 import { messages, type Locale } from "@/lib/messages";
@@ -302,7 +302,6 @@ export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange, bac
       <span className="partner-status">{member ? `${isMe ? (zh ? "你 · " : "You · ") : ""}${online ? (zh ? "在线" : "Online") : presenceReady ? (zh ? "暂时离线" : "Offline") : (zh ? "连接中" : "Connecting")}` : (zh ? "留一个位置，给最特别的人" : "A little place, just for you")}</span>
     </div>;
   }
-  const upcomingDate = specialDates.map(date=>({...date, days:anniversaryDays(date.event_date,date.repeats_yearly)})).filter(date=>date.days>=0).sort((a,b)=>a.days-b.days)[0];
   const myMember = members.find(member=>member.user_id===user.id);
   const displayedMembers = members.length ? members : [{ user_id: user.id, role: space.role }];
   return <div className="couple-space" data-photo={Boolean(backgroundPhoto)} data-theme={theme} style={{ "--couple-photo": backgroundPhoto ? `url("${backgroundPhoto}")` : themeBackground(theme, process.env.NEXT_PUBLIC_BASE_PATH || "") } as CSSProperties}>
@@ -312,13 +311,12 @@ export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange, bac
         {space.role === "owner" && <button type="button" disabled={busy} onClick={revokeInvites} title={t.revokeInvites}><RotateCcw size={14} />{t.revokeInvites}</button>}
         <button type="button" title={user.email} onClick={() => void supabase?.auth.signOut()}><LogOut size={14} />{t.signOut}</button>
       </div></div>
-      <CoupleDates togetherSince={space.together_since} wishes={wishes} zh={zh} onWish={onWish}/>
       <div className="couple-portrait" aria-live="polite">
         {partnerCard(displayedMembers.find((member) => member.role === "owner"), "owner")}
-        <div className="couple-center"><div className="couple-heart"><span /><Heart size={25} fill="currentColor" /><span /></div><h1>{space.name}</h1><span className="couple-caption">{space.signature || (membersError ? (zh ? "暂时无法加载另一半的信息" : "Partner details unavailable") : members.length === 2 ? (zh ? "两个人，一个小世界" : "Two hearts. One little world.") : (zh ? "从一个心愿，开始我们的日常" : "Make room for a little magic."))}</span></div>
+        <div className="couple-center"><div className="couple-heart"><span /><Heart size={25} fill="currentColor" /><span /></div>{space.together_since && <p>{zh ? `在一起第 ${daysTogether(space.together_since)} 天` : `${daysTogether(space.together_since)} days together`}</p>}<h1>{space.name}</h1><span className="couple-caption">{space.signature || (membersError ? (zh ? "暂时无法加载另一半的信息" : "Partner details unavailable") : members.length === 2 ? (zh ? "两个人，一个小世界" : "Two hearts. One little world.") : (zh ? "从一个心愿，开始我们的日常" : "Make room for a little magic."))}</span></div>
         {partnerCard(displayedMembers.find((member) => member.role === "partner"), "partner")}
       </div>
-      {upcomingDate && <div className="header-anniversary">{upcomingDate.emoji} {upcomingDate.title} · {upcomingDate.days===0?(zh?"就是今天":"Today"):(zh?`还有 ${upcomingDate.days} 天`:`In ${upcomingDate.days} days`)}</div>}
+      <CoupleDates anniversaries={specialDates} wishes={wishes} zh={zh} onWish={onWish}/>
     </section>
     {profileOpen && <CoupleProfile space={space} member={{user_id:user.id,role:space.role,display_name:myMember?.display_name || user.user_metadata.full_name || "",avatar_url:myMember?.avatar_url || user.user_metadata.avatar_url || "",custom_avatar:myMember?.custom_avatar}} zh={zh} onClose={()=>setProfileOpen(false)} onSaved={(next,member)=>{setSpace({...space,...next});setMembers(current=>current.map(m=>m.user_id===member.user_id?member:m));}}/>}
     {inviteUrl && <div className="invite-strip"><label>{t.inviteLink}<input readOnly value={inviteUrl} onFocus={(event) => event.target.select()} /></label><button type="button" title={t.copyLink} aria-label={t.copyLink} onClick={async () => { try { await navigator.clipboard.writeText(inviteUrl); setNotice(t.linkCopied); } catch { setNotice(t.selectLink); } }}><Copy size={17} /></button></div>}

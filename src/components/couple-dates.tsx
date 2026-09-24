@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { CalendarHeart, Heart } from 'lucide-react';
-import { dayNumber, daysTogether, localToday, nextPlannedWish, type LifeWish } from '@/lib/life';
+import { CalendarHeart } from 'lucide-react';
+import { anniversaryDays, dayNumber, localToday, nextPlannedWish, type Anniversary, type LifeWish } from '@/lib/life';
 
-export function CoupleDates({ togetherSince, wishes, zh, onWish }: {
-  togetherSince?: string | null;
+export function CoupleDates({ anniversaries, wishes, zh, onWish }: {
+  anniversaries: Anniversary[];
   wishes: LifeWish[];
   zh: boolean;
   onWish: (wish: LifeWish) => void;
@@ -20,16 +20,10 @@ export function CoupleDates({ togetherSince, wishes, zh, onWish }: {
   const next = nextPlannedWish(wishes, today);
   const days = next ? dayNumber(next.plannedDate) - dayNumber(today) : 0;
   const countdown = days === 0 ? (zh ? '就是今天' : 'Today') : (zh ? `还有 ${days} 天` : `In ${days} days`);
-  return <div className="couple-date-summary">
-    <div className="couple-date-tile together-date">
-      <span className="couple-date-label"><Heart size={14}/>{zh ? '我们的日子' : 'OUR DAYS TOGETHER'}</span>
-      <strong>{togetherSince ? (zh ? `在一起第 ${daysTogether(togetherSince, today)} 天` : `${daysTogether(togetherSince, today)} days together`) : (zh ? '我们的故事，慢慢写' : 'Our story, one day at a time')}</strong>
-      {togetherSince && <time dateTime={togetherSince}>{zh ? '从 ' : 'Since '}{togetherSince}</time>}
-    </div>
-    <button type="button" className="couple-date-tile next-wish-date" disabled={!next} onClick={() => { if (next) onWish(next); }}>
-      <span className="couple-date-label"><CalendarHeart size={14}/>{zh ? '下一件想做的事' : 'OUR NEXT LITTLE PLAN'}</span>
-      <strong>{next?.title || (zh ? '还没有安排日期' : 'No date planned yet')}</strong>
-      <span className="couple-date-meta">{next ? <><time dateTime={next.plannedDate}>{next.plannedDate}</time><span>· {countdown}</span></> : (zh ? '给一个心愿定个日子吧' : 'Set a date for a wish')}</span>
-    </button>
+  const anniversary = anniversaries.map(item => ({ ...item, days: anniversaryDays(item.event_date, item.repeats_yearly, today) })).filter(item => item.days >= 0).sort((a, b) => a.days - b.days)[0];
+  if (!anniversary && !next) return null;
+  return <div className="header-date-ribbon">
+    {anniversary && <div className="header-anniversary">{anniversary.emoji} {anniversary.title} · {anniversary.days === 0 ? (zh ? '就是今天' : 'Today') : (zh ? `还有 ${anniversary.days} 天` : `In ${anniversary.days} days`)}</div>}
+    {next && <button type="button" className="header-anniversary next-wish-date" onClick={() => onWish(next)} aria-label={zh ? `查看心愿安排：${next.title}` : `View wish plan: ${next.title}`}><CalendarHeart size={14} aria-hidden="true"/><span>{next.title} · {countdown}<time dateTime={next.plannedDate}>{next.plannedDate}</time></span></button>}
   </div>;
 }

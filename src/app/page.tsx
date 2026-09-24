@@ -6,6 +6,7 @@ import { prepareBackgroundPhoto } from "@/lib/photo";
 import { LifeDashboard, DateAndRandom } from "@/components/life-dashboard";
 import { WishExperience } from "@/components/wish-experience";
 import { SpaceGate } from "@/components/space-gate";
+import { RoamingPet } from "@/components/roaming-pet";
 import { getGoogleMapsUrl, getMapQuery, getMapSource } from "@/lib/maps";
 import { Locale, messages } from "@/lib/messages";
 import { supabase } from "@/lib/supabase";
@@ -61,6 +62,7 @@ export default function Home() {
   const [ready, setReady] = useState(false);
   const [experienceId, setExperienceId] = useState<string | null>(null);
   const [view, setView] = useState<View>("wishes");
+  const [petOpenRequest, setPetOpenRequest] = useState(0);
   const [statusFilter, setStatusFilter] = useState<"all" | WishStatus>("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [mapWishId, setMapWishId] = useState<string | null>(null);
@@ -387,7 +389,7 @@ export default function Home() {
           {hasFilters && <button type="button" className="clear-filters" onClick={() => { setStatusFilter("all"); setCategoryFilter("all"); }}><X size={14} />{t.clearFilters}</button>}
         </div>}
 
-        {view === "life" ? (spaceId ? <LifeDashboard spaceId={spaceId} zh={locale==="zh-CN"} wishes={wishes} onWish={wish=>setExperienceId(wish.id)} onBackground={memoryBackground}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起记录纪念日和回忆。":"Sign in to share your dates and memories."}</p>) : view === "map" ? <div className="map-view">
+        {view === "life" ? (spaceId ? <LifeDashboard spaceId={spaceId} zh={locale==="zh-CN"} wishes={wishes} onWish={wish=>setExperienceId(wish.id)} onBackground={memoryBackground} petOpenRequest={petOpenRequest}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起记录纪念日和回忆。":"Sign in to share your dates and memories."}</p>) : view === "map" ? <div className="map-view">
           <div className="map-heading"><h1>{t.mapTitle}</h1><p>{mapWish ? mapSource : t.mapEmpty}</p></div>
           <form className="map-search" onSubmit={(event) => { event.preventDefault(); setMapSearchQuery(getMapQuery(mapSearch)); }}>
             <Search size={17} aria-hidden="true" />
@@ -500,6 +502,7 @@ export default function Home() {
           </div>
         </div>
       </div>}
+      {spaceId && <RoamingPet key={spaceId} spaceId={spaceId} zh={locale === "zh-CN"} onOpenHome={() => { setView('life'); setPetOpenRequest(value => value + 1); }}/> }
     </main>
     </SpaceGate>
   );
