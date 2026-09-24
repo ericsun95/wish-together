@@ -5,6 +5,8 @@ import { Heart, Pencil, RefreshCw, Sparkles } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { LifeMember } from '@/lib/life';
 import { LifeModal, MiniAvatar } from './life-ui';
+import { PetPortrait } from './pet-portrait';
+import { PetPlayground } from './pet-playground';
 
 type Species = 'cat' | 'dog';
 type Action = 'feed' | 'play' | 'cuddle';
@@ -16,25 +18,6 @@ const actions: { id: Action; emoji: string; zh: string; en: string; pastZh: stri
   { id: 'cuddle', emoji: '💕', zh: '抱抱', en: 'Cuddle', pastZh: '给了它一个抱抱', pastEn: 'gave a warm cuddle' },
 ];
 
-function PetPortrait({ species, happy = false }: { species: Species; happy?: boolean }) {
-  return <svg viewBox="0 0 280 240" className={`pet-portrait ${happy ? 'pet-happy' : ''}`} aria-hidden="true">
-    <ellipse cx="140" cy="221" rx="79" ry="10" fill="currentColor" opacity=".08"/>
-    <path d="M183 186Q246 160 232 198Q220 216 184 207" fill="none" stroke="#d89964" strokeWidth="18" strokeLinecap="round"/>
-    <ellipse cx="141" cy="175" rx="63" ry="49" fill="#eeb880"/>
-    <ellipse cx="142" cy="185" rx="37" ry="30" fill="#fff1d9"/>
-    {species === 'cat' ? <><path d="M72 93L66 28L119 60M166 60L215 28L211 96" fill="#eeb880" stroke="#eeb880" strokeWidth="10" strokeLinejoin="round"/><path d="M79 74L77 46L102 64M182 65L204 46L202 76" fill="#ec9691"/></> : <><ellipse cx="74" cy="99" rx="26" ry="53" transform="rotate(17 74 99)" fill="#b7764b"/><ellipse cx="208" cy="99" rx="26" ry="53" transform="rotate(-17 208 99)" fill="#b7764b"/></>}
-    <ellipse cx="141" cy="107" rx="76" ry="65" fill="#efbd86"/>
-    <ellipse cx="141" cy="129" rx="40" ry="29" fill="#fff1d9"/>
-    <path d="M130 116Q141 109 152 116L141 126Z" fill="#805c4c" stroke="#805c4c" strokeWidth="4" strokeLinejoin="round"/>
-    <path d="M141 125V132M125 132Q132 145 141 132Q151 145 158 132" fill="none" stroke="#805c4c" strokeWidth="3.5" strokeLinecap="round"/>
-    <path d="M100 103Q106 95 113 103M169 103Q176 95 182 103" fill="none" stroke="#684b3f" strokeWidth="5" strokeLinecap="round"/>
-    <ellipse cx="98" cy="120" rx="13" ry="7" fill="#e9958b" opacity=".6"/><ellipse cx="184" cy="120" rx="13" ry="7" fill="#e9958b" opacity=".6"/>
-    {species === 'cat' && <path d="M87 128L55 122M86 138L53 143M195 128L225 122M196 138L228 143" stroke="#b7764b" strokeWidth="2.5" strokeLinecap="round"/>}
-    <ellipse cx="109" cy="211" rx="23" ry="12" fill="#fff1d9"/><ellipse cx="175" cy="211" rx="23" ry="12" fill="#fff1d9"/>
-    <path d="M120 164Q142 173 162 164" stroke="var(--accent)" strokeWidth="7" fill="none"/><circle cx="142" cy="173" r="8" fill="#f4ce6c"/>
-    <path d="M239 51C225 36 209 57 239 75C269 57 253 36 239 51Z" fill="var(--accent)" opacity=".65"/>
-  </svg>;
-}
 
 export function SharedPet({ spaceId, zh }: { spaceId: string; zh: boolean }) {
   return <PetHome key={spaceId} spaceId={spaceId} zh={zh}/>;
@@ -106,10 +89,10 @@ function PetHome({ spaceId, zh }: { spaceId: string; zh: boolean }) {
       writing.current = false;
       if (mounted.current) setBusy(false);
     }
-    if (succeeded && mounted.current) await load();
+    if (succeeded && mounted.current) { await load(); window.dispatchEvent(new Event('pet-updated')); }
   }
 
-  async function care(action: Action) {
+  async function care(action: Action, replay = false) {
     if (!supabase || writing.current || !pet) return;
     writing.current = true; requestId.current++; setBusy(true); setError(''); setNotice('');
     let succeeded = false;
@@ -119,14 +102,14 @@ function PetHome({ spaceId, zh }: { spaceId: string; zh: boolean }) {
       succeeded = true;
       if (mounted.current) setNotice(data
         ? (zh ? `${pet.name}收到了你的爱，成长值 +10 ♡` : `${pet.name} feels loved. +10 growth ♡`)
-        : (zh ? '今天已经做过这项互动啦，明天再来吧。' : 'You have done this today. Come back tomorrow.'));
+        : (replay ? (zh ? '玩得好开心！今天的陪玩成长已领取，可以继续玩哦。' : 'That was fun! Today’s play growth is already collected. Keep playing!') : (zh ? '今天已经做过这项互动啦，明天再来吧。' : 'You have done this today. Come back tomorrow.')));
     } catch {
       if (mounted.current) setError(zh ? '互动暂未确认，请重试；重复操作不会重复计分。' : 'Could not confirm this interaction. Retrying will not count it twice.');
     } finally {
       writing.current = false;
       if (mounted.current) setBusy(false);
     }
-    if (succeeded && mounted.current) await load();
+    if (succeeded && mounted.current) { await load(); window.dispatchEvent(new Event('pet-updated')); }
   }
 
   const level = pet ? Math.floor(pet.experience / 100) + 1 : 1;
@@ -155,6 +138,7 @@ function PetHome({ spaceId, zh }: { spaceId: string; zh: boolean }) {
             <p className="life-muted">{zh ? '每人每天每项一次；没来照顾也不会扣分。' : 'Each of you can do each action once daily. No penalties for days away.'}<br/>{zh ? '下次互动重置：' : 'Next daily reset: '}{nextReset.toLocaleString(zh ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
           </div>
         </div>
+        <PetPlayground species={pet.species} name={pet.name} zh={zh} busy={busy} onComplete={() => care('play', true)}/>
         <div className="pet-together"><h3>{zh ? '今天的共同照顾' : 'Today’s care, from both of you'}</h3><div className="pet-member-grid">{members.map(member => <div className="pet-member" key={member.user_id}><MiniAvatar member={member}/><div><strong>{member.display_name || (zh ? '另一半' : 'Partner')}{member.user_id === userId ? (zh ? '（你）' : ' (you)') : ''}</strong><span>{actions.map(action => { const done = journal.some(row => row.user_id === member.user_id && row.care_day === today && row.action === action.id); return <small key={action.id} className={done ? 'pet-done' : ''}>{action.emoji} {zh ? action.zh : action.en}{done ? ' ✓' : ' ·'}</small>; })}</span></div></div>)}</div></div>
         <div className="pet-journal"><h3>{zh ? '被爱着的小日常' : 'Little moments of love'}</h3>{!journal.length ? <p className="life-empty">{zh ? '从第一个抱抱开始，写下你们的共同日常。' : 'Start your shared story with a first cuddle.'}</p> : <ol>{journal.slice(0, 12).map(row => { const member = members.find(m => m.user_id === row.user_id), action = actions.find(a => a.id === row.action); return <li key={row.id}><span className="pet-journal-icon" aria-hidden="true">{action?.emoji}</span><div><p><strong>{member?.display_name || (zh ? '另一半' : 'Partner')}</strong> {zh ? action?.pastZh : action?.pastEn}</p><time dateTime={row.created_at}>{new Date(row.created_at).toLocaleString(zh ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></div><small>+10</small></li>; })}</ol>}</div>
       </>}

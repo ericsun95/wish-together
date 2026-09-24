@@ -4,6 +4,7 @@ import "./space.css";
 import "./wish-details.css";
 import "./theme.css";
 import "./life.css";
+import "./pet-play.css";
 
 export const metadata: Metadata = {
   title: "Wish Together",
