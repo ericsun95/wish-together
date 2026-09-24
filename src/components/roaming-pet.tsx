@@ -6,7 +6,9 @@ import { keepPetOnScreen, PET_SIZE, PET_POSES, fullScreenPetTarget, type PetMood
 import type { PetCarryDetail } from './pet-carry';
 import { PetPortrait } from './pet-portrait';
 
-type Friend = { id:string; name: string; species: 'cat' | 'dog' };
+import type { PetSpecies } from '@/lib/pet-catalog';
+
+type Friend = { id:string; name: string; species: PetSpecies; appearance?: string };
 type Mood = PetMood;
 
 type SocialStep={spaceId:string;token:number;first:boolean;manual:boolean;mode:'greet'|'chase'|'nap';targets:{id:string;x:number;y:number}[];rest:boolean};
@@ -14,7 +16,7 @@ export function RoamingPet({spaceId,zh,onOpenHome}:{spaceId:string;zh:boolean;on
   const [pets,setPets]=useState<Friend[]>([]);
   useEffect(()=>{
     let active=true,request=0;
-    const load=async()=>{if(!supabase)return;const id=++request;try{const result=await supabase.from('space_pets').select('id,name,species').eq('space_id',spaceId).order('slot');if(active&&id===request&&!result.error)setPets(previous=>JSON.stringify(previous)===JSON.stringify(result.data||[])?previous:(result.data||[]));}catch{/* Keep known pets offline. */}};
+    const load=async()=>{if(!supabase)return;const id=++request;try{const result=await supabase.from('space_pets').select('id,name,species,appearance').eq('space_id',spaceId).order('slot');if(active&&id===request&&!result.error)setPets(previous=>JSON.stringify(previous)===JSON.stringify(result.data||[])?previous:(result.data||[]));}catch{/* Keep known pets offline. */}};
     void load();const timer=setInterval(load,15000);window.addEventListener('pet-updated',load);window.addEventListener('focus',load);
     return()=>{active=false;clearInterval(timer);window.removeEventListener('pet-updated',load);window.removeEventListener('focus',load);};
   },[spaceId]);
@@ -24,9 +26,9 @@ export function RoamingPet({spaceId,zh,onOpenHome}:{spaceId:string;zh:boolean;on
       if(pets.length<2)return;timers.splice(0).forEach(clearTimeout);const sequence=++token;
       const send=(phase:number)=>{
         const width=window.innerWidth,height=window.innerHeight;
-        const spread=mode==='chase'?width-PET_SIZE-16:Math.min(width-PET_SIZE-16,(pets.length-1)*100);
-        const origin=(width-PET_SIZE-spread)/2;
-        const targets=pets.map((pet,index)=>({id:pet.id,x:origin+((index+(mode==='chase'?phase:0))%pets.length)/Math.max(1,pets.length-1)*spread,y:Math.max(8,height*.52+(index%2)*55)}));
+        const columns=Math.min(pets.length,Math.max(1,Math.floor((width-16)/(PET_SIZE+8))));
+        const rows=Math.ceil(pets.length/columns), gap=Math.min(PET_SIZE+12,Math.max(40,(height-PET_SIZE-24)/Math.max(1,rows-1)));
+        const targets=pets.map((pet,index)=>{const order=(index+(mode==='chase'?phase:0))%pets.length;return {id:pet.id,x:8+(order%columns)*Math.max(0,(width-PET_SIZE-16)/Math.max(1,columns-1)),y:Math.max(8,(height-PET_SIZE-(rows-1)*gap)/2)+Math.floor(order/columns)*gap};});
         window.dispatchEvent(new CustomEvent('pet-social-step',{detail:{spaceId,token:sequence,first:phase===0,manual,mode,targets,rest:phase===3} satisfies SocialStep}));
       };
       send(0);for(let i=1;i<=3;i++)timers.push(setTimeout(()=>send(i),i*2600));
@@ -81,14 +83,15 @@ function RoamingFriend({pet,index,total,spaceId,zh,onOpenHome}:{pet:Friend;index
 
   useEffect(() => {
     try { const saved = JSON.parse(localStorage.getItem(storageKey) || (index===0?localStorage.getItem(`wish-together:pet-companion:${spaceId}`):null) || '{}'); setHidden(saved.hidden === true); setPaused(saved.paused === true); } catch { /* Use defaults. */ }
-    moveTo(window.innerWidth-PET_SIZE-12-index*(PET_SIZE+8),window.innerHeight-PET_SIZE-12-(index%2)*80);
+    const columns=Math.max(1,Math.floor((window.innerWidth-16)/(PET_SIZE+8)));
+    moveTo(window.innerWidth-PET_SIZE-12-(index%columns)*(PET_SIZE+8),window.innerHeight-PET_SIZE-12-Math.floor(index/columns)*(PET_SIZE+12));
     const resize = () => { setViewport({ width: window.innerWidth, height: window.innerHeight }); moveTo(current.current.x, current.current.y); };
     resize(); window.addEventListener('resize', resize);
     const media = window.matchMedia('(prefers-reduced-motion: reduce)');
     const motion = () => setReduced(media.matches); motion(); media.addEventListener('change', motion);
     const check = () => {
       const element = document.activeElement;
-      setObstructed((!!document.querySelector('[role="dialog"], [aria-modal="true"]') || (!released.current && !!document.querySelector('.pet-playground'))) || (!root.current?.contains(element) && !!element?.matches('input, textarea, select, [contenteditable="true"]')));
+      setObstructed((!!document.querySelector('[role="dialog"], [aria-modal="true"]') || (!released.current && !!document.querySelector('.pet-home'))) || (!root.current?.contains(element) && !!element?.matches('input, textarea, select, [contenteditable="true"]')));
       setPageVisible(!document.hidden);
     };
     const observer = new MutationObserver(check); observer.observe(document.body, { childList: true, subtree: true }); check();
@@ -157,7 +160,7 @@ function RoamingFriend({pet,index,total,spaceId,zh,onOpenHome}:{pet:Friend;index
 
   function pat() {
     cancelMotion(); setSleeping(false); setMood('happy');
-    say(zh ? (pet?.species === 'cat' ? '呼噜呼噜～还要摸摸 ♡' : '汪！最喜欢你啦 ♡') : (pet?.species === 'cat' ? 'Purrr… more head pats, please ♡' : 'Woof! You’re my favorite ♡'));
+    say(zh ? (pet.species === 'cat' ? '呼噜呼噜～还要摸摸 ♡' : pet.species === 'dog' ? '汪！最喜欢你啦 ♡' : '蹭蹭你的手，喜欢你 ♡') : (pet.species === 'cat' ? 'Purrr… more head pats, please ♡' : pet.species === 'dog' ? 'Woof! You’re my favorite ♡' : 'A little nuzzle for you ♡'));
   }
   function toss() {
     cancelMotion(); setSleeping(false); setMenu(false);
@@ -200,7 +203,7 @@ function RoamingFriend({pet,index,total,spaceId,zh,onOpenHome}:{pet:Friend;index
       <button ref={petButton} type="button" className="roaming-pet-body" aria-label={zh ? `和${pet.name}互动` : `Play with ${pet.name}`} aria-expanded={menu} aria-controls={`pet-companion-controls-${pet.id}`} onPointerDown={pointerDown} onPointerMove={pointerMove} onPointerUp={finishDrag} onPointerCancel={finishDrag} onLostPointerCapture={finishDrag} onClick={event => { if (moved.current && event.detail !== 0) { moved.current = false; return; } cancelMotion(); setMenu(!menu); if (sleeping) say(zh ? '嘘，我在做一个甜甜的梦…' : 'Shh… dreaming sweet dreams…'); else say(zh ? '点点摸摸头，或者陪我玩吧！' : 'A head pat, or a little game?'); }} onKeyDown={event => {
         const delta: Record<string, [number, number]> = { ArrowLeft: [-24, 0], ArrowRight: [24, 0], ArrowUp: [0, -24], ArrowDown: [0, 24] };
         if (delta[event.key]) { event.preventDefault(); cancelMotion(); setPaused(true); remember(hidden, true); moveTo(position.x + delta[event.key][0], position.y + delta[event.key][1]); }
-      }}><PetPortrait species={pet.species} mood={sleeping ? 'sleep' : mood} heading={heading}/></button>
+      }}><PetPortrait lightweight species={pet.species} appearance={pet.appearance} mood={sleeping ? 'sleep' : mood} heading={heading}/></button>
       <span className="roaming-pet-name">{dragging ? (zh?'抱起来啦':'Picked up') : pet.name}</span>
     </div>
     {menu && <div id={`pet-companion-controls-${pet.id}`} className="pet-companion-controls" style={{ left: panelLeft, top: Math.max(8, panelTop) }} role="group" aria-label={zh ? '宠物互动' : 'Pet interactions'}>
