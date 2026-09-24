@@ -35,7 +35,7 @@ try {
   `);
   const migrationsUrl = new URL("../supabase/migrations/", import.meta.url);
   const migrations = (await readdir(migrationsUrl)).filter((name) => name.endsWith(".sql")).sort();
-  for (const migration of migrations.filter(name=>!name.endsWith('_pet_family.sql'))) {
+  for (const migration of migrations.filter(name=>!name.endsWith('_pet_family.sql') && !name.endsWith('_pet_varieties_eight.sql'))) {
     await db.exec(await readFile(new URL(migration, migrationsUrl), "utf8"));
   }
 
@@ -206,7 +206,27 @@ try {
   await db.exec('set role anon');
   await rejects("select public.care_for_named_pet($1,$2,'play')",[spaceId,secondPet.id]);
   await db.exec('reset role');
-  console.log("Database permissions, legacy migration, four-pet cap and per-pet rewards passed.");
+  for(const migration of migrations.filter(name=>name.endsWith('_pet_varieties_eight.sql')))await db.exec(await readFile(new URL(migration,migrationsUrl),'utf8'));
+  await as(owner);
+  assert.equal((await db.query('select count(*)::int n from public.space_pets where appearance=\'classic\' and space_id=$1',[spaceId])).rows[0].n,4,'Existing appearances survive');
+  await rejects("insert into public.space_pets(space_id,name,species,appearance,created_by) values($1,'Wrong','cat','pom',$2)",[spaceId,owner]);
+  await rejects("insert into public.space_pets(space_id,name,species,appearance,created_by) values($1,'Unknown','fox','golden',$2)",[spaceId,owner]);
+  for(const [species,appearance] of [['cat','silver'],['dog','pom'],['rabbit','lop'],['hamster','golden']]) {
+    const added=(await db.query("insert into public.space_pets(space_id,name,species,appearance,created_by) values($1,$2,$3,$4,$5) returning id,slot,appearance",[spaceId,appearance,species,appearance,owner])).rows[0];
+    assert.ok(added.slot>=5&&added.slot<=8); assert.equal(added.appearance,appearance);
+    assert.equal((await db.query("select public.care_for_named_pet($1,$2,'cuddle') rewarded",[spaceId,added.id])).rows[0].rewarded,true);
+    assert.equal((await db.query("select public.care_for_named_pet($1,$2,'cuddle') rewarded",[spaceId,added.id])).rows[0].rewarded,false);
+  }
+  assert.equal((await db.query('select count(*)::int n from public.space_pets where space_id=$1',[spaceId])).rows[0].n,8);
+  await rejects("insert into public.space_pets(space_id,name,species,created_by) values($1,'Ninth','cat',$2)",[spaceId,owner]);
+  await rejects("update public.space_pets set appearance='silver' where id=$1",[originalPet.id]);
+  await rejects("update public.space_pets set slot=8 where id=$1",[originalPet.id]);
+  assert.equal((await db.query('select experience from public.space_pets where id=$1',[originalPet.id])).rows[0].experience,30);
+  await as(outsider);
+  await rejects("insert into public.space_pets(space_id,name,species,appearance,created_by) values($1,'Intruder','rabbit','lop',$2)",[spaceId,outsider]);
+  assert.equal((await db.query('select count(*)::int n from public.space_pets where space_id=$1',[spaceId])).rows[0].n,0);
+  await db.exec('reset role');
+  console.log("Database permissions, legacy migration, eight-pet cap, variety validation and per-pet rewards passed.");
 } finally {
   await db.close();
 }
