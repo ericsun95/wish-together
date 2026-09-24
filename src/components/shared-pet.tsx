@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { Heart, Pencil, RefreshCw, Sparkles } from 'lucide-react';
+import { Heart, Pencil, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { LifeMember } from '@/lib/life';
 import { LifeModal, MiniAvatar } from './life-ui';
@@ -43,6 +43,8 @@ function PetHome({ spaceId, zh }: { spaceId: string; zh: boolean }) {
   const [appearance, setAppearance] = useState<string>('silver');
   const [name, setName] = useState('');
   const [renaming, setRenaming] = useState(false);
+  const [deleting, setDeleting] = useState<Pet | null>(null);
+  const [deleteError, setDeleteError] = useState('');
   const [today, setToday] = useState(() => new Date().toISOString().slice(0, 10));
   const mounted = useRef(false), writing = useRef(false), requestId = useRef(0);
   const load = useCallback(async () => {
@@ -101,6 +103,32 @@ function PetHome({ spaceId, zh }: { spaceId: string; zh: boolean }) {
     if (succeeded && mounted.current) { await load(); window.dispatchEvent(new Event('pet-updated')); }
   }
 
+  async function deletePet() {
+    if (!supabase || writing.current || !deleting) return;
+    const target = deleting;
+    writing.current = true; requestId.current++; setBusy(true); setDeleteError('');
+    let succeeded = false;
+    try {
+      const result = await supabase.from('space_pets').delete().eq('space_id', spaceId).eq('id', target.id).select('id');
+      if (result.error) throw result.error;
+      succeeded = true;
+      if (mounted.current) {
+        setPets(previous => previous.filter(item => item.id !== target.id));
+        setJournal(previous => previous.filter(item => item.pet_id !== target.id));
+        setSelected(previous => previous === target.id ? '' : previous);
+        setDeleting(null); setRenaming(false); setAdopting(false); setName(''); setError('');
+        setNotice(zh ? `已删除「${target.name}」，空位可以领养新伙伴。` : `${target.name} has been removed. There is room for a new companion.`);
+        try { localStorage.removeItem(`wish-together:pet-companion:${spaceId}:${target.id}`); } catch { /* Optional local preference. */ }
+      }
+    } catch {
+      if (mounted.current) setDeleteError(zh ? '删除暂未确认，请重试。' : 'Could not confirm deletion. Please retry.');
+    } finally {
+      writing.current = false;
+      if (mounted.current) setBusy(false);
+    }
+    if (succeeded && mounted.current) { window.dispatchEvent(new Event('pet-updated')); await load(); }
+  }
+
   async function care(action: Action, replay = false) {
     if (!supabase || writing.current || !pet) return;
     writing.current = true; requestId.current++; setBusy(true); setError(''); setNotice('');
@@ -144,7 +172,7 @@ function PetHome({ spaceId, zh }: { spaceId: string; zh: boolean }) {
         </div>
       </form> : <>
         <div className="pet-card"><div className="pet-scene"><span className="pet-level">Lv. {level}</span><PetCarry petId={pet.id} spaceId={spaceId} zh={zh}><PetPortrait species={pet.species} appearance={pet.appearance} happy={!!notice} mood={pose}/></PetCarry><div className="pet-pose-picker" role="group" aria-label={zh?"宠物姿态":"Pet poses"}>{PET_POSES.map(item=><button type="button" key={item.mood} aria-pressed={pose===item.mood} onClick={()=>{setNotice('');setPose(item.mood);}}>{item.emoji} {pet.species==='cat'&&item.mood==='sit'?(zh?'乖乖等你':'Wait here'):(zh?item.zh:item.en)}</button>)}</div><p>{zh ? '有你们在，每天都很开心' : 'Every day is happier with you two'}</p></div>
-          <div className="pet-details"><div className="pet-title"><h3>{pet.name}</h3><button className="icon-button" disabled={busy} aria-label={zh ? '修改宠物名字' : 'Rename pet'} onClick={() => { setName(pet.name); setRenaming(true); }}><Pencil size={15}/></button></div>
+          <div className="pet-details"><div className="pet-title"><h3>{pet.name}</h3><button className="icon-button" disabled={busy} aria-label={zh ? '修改宠物名字' : 'Rename pet'} onClick={() => { setName(pet.name); setRenaming(true); }}><Pencil size={15}/></button><button type="button" className="icon-button pet-delete-trigger" disabled={busy} aria-label={zh ? `删除宠物${pet.name}` : `Delete pet ${pet.name}`} onClick={() => { setDeleteError(''); setDeleting(pet); }}><Trash2 size={15}/></button></div>
             <p className="pet-variety-name">{petEmoji(pet.species)} {zh ? petVariety(pet.species,pet.appearance).zh : petVariety(pet.species,pet.appearance).en}</p>
             <p className="life-muted">{zh ? (level < 3 ? '初来乍到的小宝贝' : level < 6 ? '越来越亲密的小伙伴' : '你们最默契的家人') : (level < 3 ? 'Your sweet new arrival' : level < 6 ? 'Your growing little companion' : 'One of the family')}</p>
             <div className="pet-growth-label"><span><Sparkles size={14}/> {zh ? '共同成长' : 'Growing together'}</span><span>{progress} / 100</span></div><progress max={100} value={progress} aria-label={zh ? '升到下一级的成长值' : 'Growth toward next level'}/>
@@ -157,6 +185,13 @@ function PetHome({ spaceId, zh }: { spaceId: string; zh: boolean }) {
         <div className="pet-together"><h3>{zh ? '今天的共同照顾' : 'Today’s care, from both of you'}</h3><div className="pet-member-grid">{members.map(member => <div className="pet-member" key={member.user_id}><MiniAvatar member={member}/><div><strong>{member.display_name || (zh ? '另一半' : 'Partner')}{member.user_id === userId ? (zh ? '（你）' : ' (you)') : ''}</strong><span>{actions.map(action => { const done = journal.some(row => row.user_id === member.user_id && row.care_day === today && row.action === action.id); return <small key={action.id} className={done ? 'pet-done' : ''}>{action.emoji} {zh ? action.zh : action.en}{done ? ' ✓' : ' ·'}</small>; })}</span></div></div>)}</div></div>
         <div className="pet-journal"><h3>{zh ? '被爱着的小日常' : 'Little moments of love'}</h3>{!journal.length ? <p className="life-empty">{zh ? '从第一个抱抱开始，写下你们的共同日常。' : 'Start your shared story with a first cuddle.'}</p> : <ol>{journal.slice(0, 12).map(row => { const member = members.find(m => m.user_id === row.user_id), action = actions.find(a => a.id === row.action); return <li key={row.id}><span className="pet-journal-icon" aria-hidden="true">{action?.emoji}</span><div><p><strong>{member?.display_name || (zh ? '另一半' : 'Partner')}</strong> {zh ? action?.pastZh : action?.pastEn}</p><time dateTime={row.created_at}>{new Date(row.created_at).toLocaleString(zh ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></div><small>+10</small></li>; })}</ol>}</div>
       </>}
+    {deleting && <LifeModal title={zh ? `删除「${deleting.name}」？` : `Delete ${deleting.name}?`} onClose={() => { if (!busy) setDeleting(null); }}>
+      <div className="pet-delete-confirm"><p>{zh ? '这只宠物会从你们的共同小窝中移除，成长值和全部照顾记录也会永久删除，双方都会看到变化。此操作无法撤销。' : 'This pet, their growth and all care records will be permanently removed from your shared home for both partners. This cannot be undone.'}</p>
+        <p className="life-muted">{zh ? '其他宠物和你提供的照片不会受影响。' : 'Your other pets and supplied photos will stay unchanged.'}</p>
+        {deleteError && <p role="alert" className="pet-error">{deleteError}</p>}
+        <div><button type="button" className="secondary" disabled={busy} onClick={() => setDeleting(null)}>{zh ? '取消，留下它' : 'Cancel, keep them'}</button><button type="button" className="pet-delete-button" disabled={busy} onClick={() => void deletePet()}>{busy ? (zh ? '正在删除…' : 'Deleting…') : (zh ? '确认删除' : 'Delete permanently')}</button></div>
+      </div>
+    </LifeModal>}
     {renaming && pet && <LifeModal title={zh ? '给它一个新名字' : 'A new name for your pet'} onClose={() => { if (!busy) setRenaming(false); }}><form className="pet-rename-form" onSubmit={saveName}>{error && <p role="alert" className="pet-error">{error}</p>}<label>{zh ? '宠物名字' : 'Pet name'}<input required maxLength={24} value={name} disabled={busy} onChange={e => setName(e.target.value)}/></label><button className="primary" disabled={busy || !name.trim()}>{zh ? '保存名字' : 'Save name'}</button></form></LifeModal>}
   <a className="pet-model-credit" href={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/models/pets/CREDITS.md`} target="_blank" rel="noreferrer">{zh ? '模型：kenchoo / Guillaume Bolis · Godrex · CC BY 4.0' : 'Models: kenchoo / Guillaume Bolis · Godrex · CC BY 4.0'}</a></section>;
 }

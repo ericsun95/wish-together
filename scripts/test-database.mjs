@@ -35,7 +35,7 @@ try {
   `);
   const migrationsUrl = new URL("../supabase/migrations/", import.meta.url);
   const migrations = (await readdir(migrationsUrl)).filter((name) => name.endsWith(".sql")).sort();
-  for (const migration of migrations.filter(name=>!name.endsWith('_pet_family.sql') && !name.endsWith('_pet_varieties_eight.sql'))) {
+  for (const migration of migrations.filter(name=>!name.endsWith('_pet_family.sql') && !name.endsWith('_pet_varieties_eight.sql') && !name.endsWith('_delete_pets.sql'))) {
     await db.exec(await readFile(new URL(migration, migrationsUrl), "utf8"));
   }
 
@@ -226,7 +226,25 @@ try {
   await rejects("insert into public.space_pets(space_id,name,species,appearance,created_by) values($1,'Intruder','rabbit','lop',$2)",[spaceId,outsider]);
   assert.equal((await db.query('select count(*)::int n from public.space_pets where space_id=$1',[spaceId])).rows[0].n,0);
   await db.exec('reset role');
-  console.log("Database permissions, legacy migration, eight-pet cap, variety validation and per-pet rewards passed.");
+  for(const migration of migrations.filter(name=>name.endsWith('_delete_pets.sql')))await db.exec(await readFile(new URL(migration,migrationsUrl),'utf8'));
+  await as(outsider);
+  assert.equal((await db.query('delete from public.space_pets where id=$1 returning id',[secondPet.id])).rows.length,0,'Outsiders cannot delete a pet');
+  await db.exec('set role anon');
+  await rejects('delete from public.space_pets where id=$1',[secondPet.id]);
+  await as(partner);
+  assert.equal((await db.query('delete from public.space_pets where id=$1 and space_id=$2 returning id',[secondPet.id,otherSpace])).rows.length,0,'Wrong space is not deleted');
+  assert.equal((await db.query('delete from public.space_pets where id=$1 and space_id=$2 returning id',[secondPet.id,spaceId])).rows.length,1,'Partner can delete a shared pet');
+  assert.equal((await db.query('select count(*)::int n from public.pet_care where pet_id=$1',[secondPet.id])).rows[0].n,0,'Only the removed pet journal cascades');
+  assert.equal((await db.query('select experience from public.space_pets where id=$1',[originalPet.id])).rows[0].experience,30,'Other growth survives');
+  assert.equal((await db.query('select count(*)::int n from public.pet_care where pet_id=$1',[originalPet.id])).rows[0].n,3,'Other journals survive');
+  const replacement=(await db.query("insert into public.space_pets(space_id,name,species,appearance,created_by) values($1,'New friend','dog','pom',$2) returning id,slot,experience",[spaceId,partner])).rows[0];
+  assert.equal(replacement.slot,2,'Freed slot is reused');assert.equal(replacement.experience,0);
+  await rejects("select public.care_for_named_pet($1,$2,'feed')",[spaceId,secondPet.id]);
+  await as(owner);
+  assert.equal((await db.query('delete from public.space_pets where space_id=$1 returning id',[spaceId])).rows.length,8);
+  assert.equal((await db.query('select count(*)::int n from public.pet_care where space_id=$1',[spaceId])).rows[0].n,0);
+  assert.equal((await db.query("insert into public.space_pets(space_id,name,species,created_by) values($1,'First again','cat',$2) returning slot",[spaceId,owner])).rows[0].slot,1);
+  console.log("Database permissions, migration, eight-pet cap, varieties, per-pet rewards and member-only deletion passed.");
 } finally {
   await db.close();
 }
