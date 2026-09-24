@@ -35,7 +35,7 @@ try {
   `);
   const migrationsUrl = new URL("../supabase/migrations/", import.meta.url);
   const migrations = (await readdir(migrationsUrl)).filter((name) => name.endsWith(".sql")).sort();
-  for (const migration of migrations) {
+  for (const migration of migrations.filter(name=>!name.endsWith('_pet_family.sql'))) {
     await db.exec(await readFile(new URL(migration, migrationsUrl), "utf8"));
   }
 
@@ -166,6 +166,14 @@ try {
   await as(owner);
   assert.equal((await db.query("select public.care_for_pet($1,'feed') as rewarded",[spaceId])).rows[0].rewarded,true);
   assert.equal((await db.query("select experience from public.space_pets where space_id=$1",[spaceId])).rows[0].experience,30);
+  // Apply the family migration to a populated legacy database, then verify preservation.
+  await db.exec('reset role');
+  for(const migration of migrations.filter(name=>name.endsWith('_pet_family.sql')))await db.exec(await readFile(new URL(migration,migrationsUrl),'utf8'));
+  await as(owner);
+  const originalPet=(await db.query('select id,experience from public.space_pets where space_id=$1',[spaceId])).rows[0];
+  assert.equal(originalPet.experience,30);
+  assert.equal((await db.query('select count(*)::int n from public.pet_care where pet_id=$1',[originalPet.id])).rows[0].n,3);
+  assert.equal((await db.query("select public.care_for_named_pet($1,$2,'feed') rewarded",[spaceId,originalPet.id])).rows[0].rewarded,false);
   await as(outsider);
   assert.equal((await db.query("select count(*)::int as n from public.space_pets where space_id=$1",[spaceId])).rows[0].n,0);
   assert.equal((await db.query("select count(*)::int as n from public.pet_care where space_id=$1",[spaceId])).rows[0].n,0);
@@ -178,7 +186,27 @@ try {
   await db.exec("reset role");
   assert.equal((await db.query("select has_table_privilege('anon','public.space_pets','SELECT') as allowed")).rows[0].allowed,false);
   await db.exec("reset role");
-  console.log("Database permissions and invitation flow passed.");
+  await as(owner);
+  const secondPet=(await db.query("insert into public.space_pets(space_id,name,species,created_by) values($1,'Buddy','dog',$2) returning id,slot",[spaceId,owner])).rows[0];
+  assert.equal(secondPet.slot,2);
+  await db.query("insert into public.space_pets(space_id,name,species,created_by) values($1,'Third','cat',$2),($1,'Fourth','dog',$2)",[spaceId,owner]);
+  await rejects("insert into public.space_pets(space_id,name,species,created_by) values($1,'Fifth','cat',$2)",[spaceId,owner]);
+  await rejects("insert into public.space_pets(space_id,name,species,created_by,slot) values($1,'Bypass','cat',$2,1)",[spaceId,owner]);
+  assert.equal((await db.query("select public.care_for_named_pet($1,$2,'feed') rewarded",[spaceId,secondPet.id])).rows[0].rewarded,true);
+  assert.equal((await db.query("select public.care_for_named_pet($1,$2,'feed') rewarded",[spaceId,secondPet.id])).rows[0].rewarded,false);
+  assert.equal((await db.query('select experience from public.space_pets where id=$1',[originalPet.id])).rows[0].experience,30);
+  assert.equal((await db.query('select experience from public.space_pets where id=$1',[secondPet.id])).rows[0].experience,10);
+  await as(partner);
+  assert.equal((await db.query("select public.care_for_named_pet($1,$2,'feed') rewarded",[spaceId,secondPet.id])).rows[0].rewarded,true);
+  await db.query("update public.space_pets set name='Our Buddy' where id=$1",[secondPet.id]);
+  assert.equal((await db.query('select name from public.space_pets where id=$1',[originalPet.id])).rows[0].name,'Our Mochi');
+  await rejects("select public.care_for_named_pet($1,$2,'feed')",[otherSpace,secondPet.id]);
+  await as(outsider);
+  await rejects("select public.care_for_named_pet($1,$2,'play')",[spaceId,secondPet.id]);
+  await db.exec('set role anon');
+  await rejects("select public.care_for_named_pet($1,$2,'play')",[spaceId,secondPet.id]);
+  await db.exec('reset role');
+  console.log("Database permissions, legacy migration, four-pet cap and per-pet rewards passed.");
 } finally {
   await db.close();
 }
