@@ -30,9 +30,11 @@ assert.equal(nextPlannedWish([],'2026-09-23'),null);
 assert.equal(datedWishes[0].id,'past');
 const petSource=fs.readFileSync(new URL('../src/lib/pet-play.ts',import.meta.url),'utf8');
 const petJs=ts.transpileModule(petSource,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
-const {keepPetOnScreen}=await import(`data:text/javascript;base64,${Buffer.from(petJs).toString('base64')}`);
+const {keepPetOnScreen,fullScreenPetTarget,PET_SIZE}=await import(`data:text/javascript;base64,${Buffer.from(petJs).toString('base64')}`);
 assert.deepEqual(keepPetOnScreen(-100,-100,390,844),{x:8,y:8});
 assert.deepEqual(keepPetOnScreen(2000,2000,390,844),{x:286,y:740});
 assert.deepEqual(keepPetOnScreen(120,180,390,844),{x:120,y:180});
 assert.deepEqual(keepPetOnScreen(500,700,320,568),{x:216,y:464});
 console.log('Anniversary rollover, date selection, random-wish filters and pet viewport bounds passed.');
+
+for(const [w,h] of [[390,844],[1280,960],[320,568]]) { const points=[0,1,2,3].map(step=>fullScreenPetTarget(w,h,step,()=>.5)); assert.ok(points[0].x<w/2 && points[0].y<h/2); assert.ok(points[2].x+PET_SIZE/2>w/2 && points[2].y+PET_SIZE/2>h/2); for(const point of points) {assert.ok(point.x>=8 && point.x+PET_SIZE<=w-8);assert.ok(point.y>=8 && point.y+PET_SIZE<=h-8);} }
