@@ -8,8 +8,10 @@ export function Pet3D({species, mood='idle', heading=0, game, children}: {specie
   latest.current={mood,heading,game};
   const gameMode=!!game;
   useEffect(()=>{
+    setReady(false);
+    const abort = new AbortController();
     let disposed=false, failed=false, frame=0, last=0, visible=true;
-    let engine: ReturnType<typeof import('@/lib/pet-3d-scene').createPetScene>|undefined;
+    let engine: Awaited<ReturnType<typeof import('@/lib/pet-3d-scene').createPetScene>>|undefined;
     const node=canvas.current!;
     const media=matchMedia('(prefers-reduced-motion: reduce)');
     const draw=(now:number)=>{
@@ -26,12 +28,12 @@ export function Pet3D({species, mood='idle', heading=0, game, children}: {specie
     const lost=(event:Event)=>{event.preventDefault();failed=true;cancelAnimationFrame(frame);setReady(false);};
     node.addEventListener('webglcontextlost',lost);
     document.addEventListener('visibilitychange',wake);media.addEventListener('change',wake);
-    void import('@/lib/pet-3d-scene').then(module=>{
+    void import('@/lib/pet-3d-scene').then(async module=>{
       if(disposed)return;
-      try{engine=module.createPetScene(node,species,gameMode);const box=node.getBoundingClientRect();engine.resize(Math.max(1,box.width),Math.max(1,box.height));engine.update(latest.current,0,1,media.matches);setReady(true);wake();}catch{setReady(false);}
+      try{engine=await module.createPetScene(node,species,gameMode,abort.signal);if(disposed){engine.dispose();return;}const box=node.getBoundingClientRect();engine.resize(Math.max(1,box.width),Math.max(1,box.height));engine.update(latest.current,0,1,media.matches);setReady(true);wake();}catch{if(!disposed)setReady(false);}
     }).catch(()=>{if(!disposed)setReady(false);});
-    return()=>{disposed=true;cancelAnimationFrame(frame);resize.disconnect();intersection.disconnect();document.removeEventListener('visibilitychange',wake);media.removeEventListener('change',wake);node.removeEventListener('webglcontextlost',lost);engine?.dispose();};
+    return()=>{disposed=true;abort.abort();cancelAnimationFrame(frame);resize.disconnect();intersection.disconnect();document.removeEventListener('visibilitychange',wake);media.removeEventListener('change',wake);node.removeEventListener('webglcontextlost',lost);engine?.dispose();};
   },[species,gameMode]);
   useEffect(()=>redraw.current(),[mood,heading,game]);
-  return <div className={`pet-3d ${gameMode?'pet-3d-game':''}`} data-renderer={ready?'3d':'fallback'}><canvas ref={canvas} aria-hidden="true" style={{opacity:ready?1:0}}/>{!ready&&children}</div>;
+  return <div className={`pet-3d ${gameMode?'pet-3d-game':''}`} data-renderer={ready?'3d':'fallback'}><canvas key={`${species}-${gameMode}`} ref={canvas} aria-hidden="true" style={{opacity:ready?1:0}}/>{!ready&&children}</div>;
 }

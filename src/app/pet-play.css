@@ -81,3 +81,24 @@
 .pet-drag-hint{font-size:11px!important;color:var(--accent)!important}
 .roaming-pet.is-dragging .roaming-pet-body{cursor:grabbing;filter:drop-shadow(0 12px 9px #34211835)}
 .roaming-pet.is-dragging .roaming-pet-name{background:var(--accent-light)}
+.pet-family-picker,.pet-family-actions{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}
+.pet-family-picker button,.pet-family-actions button,.pet-friends-invite{padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);font:inherit;font-size:12px}
+.pet-family-picker button[aria-pressed=true],.pet-family-actions button[aria-pressed=true]{border-color:var(--accent);background:var(--accent-light)}
+.pet-family-picker small{margin-left:8px;color:var(--accent)}
+.pet-family{padding:16px;border:1px solid var(--line);border-radius:20px;background:var(--surface);margin-bottom:24px}
+.pet-family-yard{position:relative;height:230px;overflow:hidden;border-radius:16px;background:radial-gradient(ellipse at bottom,var(--accent-light),transparent 75%)}
+.pet-family-friend{position:absolute;width:150px;bottom:12px;transform:translateX(-50%);text-align:center;transition:left 1.8s ease,transform 1.8s ease}
+.pet-family-friend>span{font-size:11px;color:var(--accent);background:var(--surface);border-radius:10px;padding:3px 8px}
+.pet-family-heart{position:absolute;left:0;right:0;top:8px;text-align:center;color:var(--accent);font-size:24px;letter-spacing:10px}
+.pet-family p{text-align:center;font-size:12px;color:var(--muted)}
+.pet-family-actions{justify-content:center;margin-bottom:0}
+.is-greet .pet-family-friend:nth-child(even){transform:translateX(-35%) rotate(3deg)}
+.is-greet .pet-family-friend:nth-child(odd){transform:translateX(-65%) rotate(-3deg)}
+.is-chase .pet-family-friend{animation:pet-friends-chase 5s ease-in-out infinite}
+@keyframes pet-friends-chase{0%,100%{left:22%;bottom:12px}25%{left:50%;bottom:60px}50%{left:78%;bottom:12px}75%{left:50%;bottom:0}}
+.pet-friends-invite{width:100%;margin-top:8px}
+@media(max-width:600px){.pet-family{padding:10px}.pet-family-friend{width:100px}.pet-family-yard{height:190px}.pet-family-actions{gap:5px}.pet-family-actions button{padding:9px 7px;font-size:11px}}
+@media(prefers-reduced-motion:reduce){.pet-family-friend{animation:none!important;transition:none!important}}
+
+.pet-photo { object-fit: contain; user-select: none; pointer-events: none; }
+.pet-model-credit { display: block; text-align: center; margin-top: 16px; font-size: 10px; color: var(--muted); }

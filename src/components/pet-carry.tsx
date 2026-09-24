@@ -2,21 +2,21 @@
 import { useRef, useState, type PointerEvent, type ReactNode } from 'react';
 import { PET_SIZE } from '@/lib/pet-play';
 
-export type PetCarryDetail = { spaceId:string; x:number; y:number; holding:boolean };
+export type PetCarryDetail = { spaceId:string; petId:string; x:number; y:number; holding:boolean };
 export function carryPet(detail:PetCarryDetail) { window.dispatchEvent(new CustomEvent('pet-carry',{detail})); }
 
-export function PetCarry({spaceId,zh,children}:{spaceId:string;zh:boolean;children:ReactNode}) {
+export function PetCarry({spaceId,petId,zh,children}:{spaceId:string;petId:string;zh:boolean;children:ReactNode}) {
   const start=useRef<{x:number;y:number}|null>(null), moved=useRef(false);
   const [holding,setHolding]=useState(false);
   function send(event:PointerEvent<HTMLButtonElement>,holding:boolean) {
-    carryPet({spaceId,x:event.clientX-PET_SIZE/2,y:event.clientY-PET_SIZE/2,holding});
+    carryPet({spaceId,petId,x:event.clientX-PET_SIZE/2,y:event.clientY-PET_SIZE/2,holding});
   }
   function finish(event:PointerEvent<HTMLButtonElement>) {
     if(moved.current)send(event,false);
     start.current=null;setHolding(false);
     if(event.currentTarget.hasPointerCapture(event.pointerId))event.currentTarget.releasePointerCapture(event.pointerId);
   }
-  function release() {carryPet({spaceId,x:window.innerWidth-PET_SIZE-20,y:window.innerHeight-PET_SIZE-24,holding:false});}
+  function release() {carryPet({spaceId,petId,x:window.innerWidth-PET_SIZE-20,y:window.innerHeight-PET_SIZE-24,holding:false});}
   return <><button type="button" className={`pet-carry ${holding?'is-holding':''}`} aria-label={zh?'拖动宠物到页面上，或点击叫它出来':'Drag your pet onto the page, or click to bring it out'} onPointerDown={event=>{
     if(!event.isPrimary||event.button!==0)return;
     start.current={x:event.clientX,y:event.clientY};moved.current=false;event.currentTarget.setPointerCapture(event.pointerId);
