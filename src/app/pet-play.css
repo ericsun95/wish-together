@@ -99,3 +99,6 @@
 .pet-friends-invite{width:100%;margin-top:8px}
 @media(max-width:600px){.pet-family{padding:10px}.pet-family-friend{width:100px}.pet-family-yard{height:190px}.pet-family-actions{gap:5px}.pet-family-actions button{padding:9px 7px;font-size:11px}}
 @media(prefers-reduced-motion:reduce){.pet-family-friend{animation:none!important;transition:none!important}}
+
+.pet-photo { object-fit: contain; user-select: none; pointer-events: none; }
+.pet-model-credit { display: block; text-align: center; margin-top: 16px; font-size: 10px; color: var(--muted); }
