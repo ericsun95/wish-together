@@ -1,12 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowLeftRight, Check, Compass, Expand, Home, Map, Pause, Play, RotateCcw, Star, X } from 'lucide-react';
 import { action, announce, freshGame, gateOpen, interact, phase, restoreGame, route, stars, switchPet, tick, type Game, type Point } from '@/lib/adventure/game';
+import { supabase } from '@/lib/supabase';
+import { petImage } from '@/lib/pet-catalog';
+import { selectParty, type AdventurePet } from '@/lib/adventure/party';
 import type { View } from '@/lib/adventure/scene';
 import './solo-adventure.css';
 
-type Props = { spaceId: string | null; zh: boolean };
+type Props = { spaceId: string | null; zh: boolean; onPets?: () => void };
 type Screen = 'lobby' | 'playing' | 'paused' | 'won';
 type RecordScore = { stars: number; seconds: number };
 const copy = {
@@ -63,9 +66,38 @@ const copy = {
 const formatTime = (n: number) => `${Math.floor(n / 60)}:${String(Math.floor(n % 60)).padStart(2, '0')}`;
 const emptyInput = () => ({ x: 0, z: 0 });
 
-export function SoloAdventure(props: Props) { return <Adventure key={props.spaceId || 'local'} {...props}/>; }
-function Adventure({ spaceId, zh }: Props) {
+export function SoloAdventure(props: Props) { return <AdventureFamily key={props.spaceId || 'local'} {...props}/>; }
+function AdventureFamily(props: Props) {
+  const [pets, setPets] = useState<AdventurePet[]>([]);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    let disposed = false, request = 0;
+    async function load() {
+      const id = ++request;
+      if (!props.spaceId || !supabase) { setPets([]); setStatus('ready'); return; }
+      try {
+        const { data, error } = await supabase.from('space_pets').select('id,name,species,appearance').eq('space_id', props.spaceId).order('slot');
+        if (disposed || id !== request) return;
+        if (error) throw error;
+        setPets(previous => JSON.stringify(previous) === JSON.stringify(data) ? previous : (data || []) as AdventurePet[]); setStatus('ready');
+      } catch { if (!disposed && id === request) setStatus('error'); }
+    }
+    void load(); window.addEventListener('focus', load); window.addEventListener('pet-updated', load);
+    return () => { disposed = true; window.removeEventListener('focus', load); window.removeEventListener('pet-updated', load); };
+  }, [props.spaceId, retry]);
+  if (status !== 'ready') return <div className="life-empty" role="status">{status === 'loading' ? (props.zh ? '正在接你们的小伙伴…' : 'Finding your pets…') : <>{props.zh ? '暂时无法加载宠物。' : 'Could not load your pets.'}<button type="button" onClick={() => {setStatus('loading');setRetry(v => v+1);}}>{props.zh ? '重试' : 'Retry'}</button></>}</div>;
+  return <Adventure {...props} pets={pets}/>;
+}
+export function Adventure({ spaceId, zh, onPets, pets }: Props & { pets: AdventurePet[] }) {
   const t = copy[zh ? 'zh' : 'en'];
+  const [ids, setIds] = useState<Partial<Record<'cat' | 'dog', string>>>({});
+  const partyKey = `wish-together:adventure:party:v1:${spaceId || 'local'}`;
+  useEffect(() => { try { const value = JSON.parse(localStorage.getItem(partyKey) || '{}'); if (value && typeof value === 'object') setIds({cat:typeof value.cat === 'string' ? value.cat : undefined,dog:typeof value.dog === 'string' ? value.dog : undefined}); } catch { /* Default to the first adopted cat and dog. */ } }, [partyKey]);
+  const party = useMemo(() => selectParty(pets, ids), [pets, ids]);
+  function choose(species: 'cat' | 'dog', id: string) { const next = {...ids, [species]:id}; setIds(next); try { localStorage.setItem(partyKey, JSON.stringify(next)); } catch { setSaveOk(false); } }
+  const chosen = (species: 'cat' | 'dog') => pets.find(p=>p.species===species && p.id===ids[species]) || pets.find(p=>p.species===species);
+  const image = (species: 'cat' | 'dog') => { const pet = chosen(species); return pet ? petImage(species, pet.appearance) : undefined; };
   const key = `wish-together:adventure:kitchen:v1:${spaceId || 'local'}`;
   const game = useRef<Game>(freshGame());
   const [snapshot, setSnapshot] = useState<Game>(() => freshGame());
@@ -102,7 +134,9 @@ function Adventure({ spaceId, zh }: Props) {
     storageReady.current = true;
     return () => { persist(); storageReady.current = false; };
   }, [key, persist, sync]);
+  useEffect(() => { if (!party) { clearInput(); setScreen('lobby'); } }, [party, clearInput]);
   function start(reset = false) {
+    if (!party) return;
     hasStarted.current = true;
     if (reset || game.current.won) game.current = freshGame();
     clearInput(); sync(); setConfirmReset(false); setScreen('playing');
@@ -113,7 +147,7 @@ function Adventure({ spaceId, zh }: Props) {
   function leave() { clearInput(); persist(); setScreen('lobby'); setConfirmReset(false); if (document.fullscreenElement) void document.exitFullscreen().catch(() => {}); requestAnimationFrame(() => launch.current?.focus()); }
 
   useEffect(() => {
-    if (!running) return;
+    if (!running || !party) return;
     const abort = new AbortController(); let engine: View | null = null, disposed = false, last = 0, uiTime = 0, saveTime = 0, stuckTime = 0;
     const node = canvas.current!; setLoaded(false); setError(false);
     const reduced = matchMedia('(prefers-reduced-motion: reduce)');
@@ -121,7 +155,7 @@ function Adventure({ spaceId, zh }: Props) {
     const observer = new ResizeObserver(resize); observer.observe(node);
     const lost = (event: Event) => { event.preventDefault(); pause(); setError(true); };
     node.addEventListener('webglcontextlost', lost);
-    void import('@/lib/adventure/scene').then(module => disposed ? null : module.createScene(node, zh, mapOnly, abort.signal)).then(result => {
+    void import('@/lib/adventure/scene').then(module => disposed ? null : module.createScene(node, zh, mapOnly, abort.signal, party)).then(result => {
       if (!result) return;
       if (disposed) { result.dispose(); return; } engine = result; view.current = result; resize(); setLoaded(true);
       function draw(now: number) {
@@ -150,7 +184,7 @@ function Adventure({ spaceId, zh }: Props) {
       frame.current = requestAnimationFrame(draw);
     }).catch(() => { if (!disposed) { setError(true); pause(); } });
     return () => { disposed = true; abort.abort(); cancelAnimationFrame(frame.current); observer.disconnect(); node.removeEventListener('webglcontextlost', lost); engine?.dispose(); view.current = null; clearInput(); };
-  }, [running, zh, mapOnly, clearInput, pause, persist, sync]);
+  }, [running, zh, mapOnly, party, clearInput, pause, persist, sync]);
 
   useEffect(() => {
     if (!running) return;
@@ -195,17 +229,18 @@ function Adventure({ spaceId, zh }: Props) {
     <div className="adventure-lobby">
       <div className="adventure-intro"><span className="adventure-kicker">LITTLE PAWS · BIG PLANS</span><h2>{t.title}</h2><p>{t.subtitle}</p></div>
       <div className="adventure-chapter">
-        <div className="adventure-chapter-art" aria-hidden="true"><div className="adventure-art-window"/><span className="adventure-art-cookie">🍪</span><img className="adventure-art-cat" src={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/models/pets/cat.webp`} alt=""/><img className="adventure-art-dog" src={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/models/pets/dog.webp`} alt=""/><span className="adventure-art-number">01</span></div>
+        <div className="adventure-chapter-art" aria-hidden="true"><div className="adventure-art-window"/><span className="adventure-art-cookie">🍪</span>{image('cat') && <img className="adventure-art-cat" src={image('cat')} alt=""/>}{image('dog') && <img className="adventure-art-dog" src={image('dog')} alt=""/>}<span className="adventure-art-number">01</span></div>
         <div className="adventure-chapter-copy"><span className="adventure-kicker">{t.chapter}</span><h3>{t.name}</h3><p>{t.story}</p><div className="adventure-tags"><span>{t.single}</span><span>{t.duration}</span></div>
-          <div className="adventure-lobby-actions"><button ref={launch} type="button" className="adventure-primary" onClick={() => start(!hasSave)}><Play size={17}/>{hasSave ? t.resume : t.start}</button>{hasSave && <button type="button" className="adventure-text" onClick={() => setConfirmReset(true)}>{t.fresh}</button>}</div>
+          <div className="adventure-lobby-actions"><button ref={launch} disabled={!party} type="button" className="adventure-primary" onClick={() => start(!hasSave)}><Play size={17}/>{hasSave ? t.resume : t.start}</button>{hasSave && <button type="button" className="adventure-text" onClick={() => setConfirmReset(true)}>{t.fresh}</button>}</div>
           {record && <p className="adventure-record">{'★'.repeat(record.stars)} · {t.best} {formatTime(record.seconds)}</p>}
         </div>
       </div>
-      <div className="adventure-pet-cards">{(['cat', 'dog'] as const).map(species => <div key={species}><img src={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/models/pets/${species}.webp`} alt=""/><div><strong>{t[species]}</strong><p>{species === 'cat' ? t.catSkill : t.dogSkill}</p></div></div>)}</div>
+      {!party && <p className="adventure-party-note" role="status">{zh ? '这一关需要一只已领养的猫咪和一只狗狗。先到宠物小屋接齐伙伴吧。' : 'This chapter needs an adopted cat and dog. Visit your pets to complete the team.'}{onPets && <button type="button" className="adventure-text" onClick={onPets}>{zh ? '去宠物小屋 →' : 'Visit your pets →'}</button>}</p>}
+      <div className="adventure-pet-cards">{(['cat', 'dog'] as const).map(species => <div key={species}>{image(species) && <img src={image(species)} alt=""/>}<div><strong>{chosen(species)?.name || t[species]}</strong>{pets.filter(p=>p.species===species).length > 1 && <label className="adventure-pet-select">{zh ? `出场${t[species]}` : `Choose ${t[species]}`}<select value={chosen(species)?.id} onChange={e=>choose(species,e.target.value)}>{pets.filter(p=>p.species===species).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}<p>{species === 'cat' ? t.catSkill : t.dogSkill}</p></div></div>)}</div>
       <p className="adventure-help">{t.controls}</p><p className="adventure-help">{t.hints}</p><small className="adventure-local">{saveOk ? t.local : t.noSave}</small>
       {confirmReset && !running && <div className="adventure-reset-note" role="alert"><p>{t.repeat}</p><button type="button" className="adventure-primary" onClick={() => start(true)}>{t.confirm}</button><button type="button" className="adventure-text" onClick={() => setConfirmReset(false)}>{t.cancel}</button></div>}
     </div>
-    {running && <div ref={dialog} className="adventure-game" role="dialog" aria-modal="true" aria-labelledby="adventure-title" tabIndex={-1}>
+    {running && party && <div ref={dialog} className="adventure-game" role="dialog" aria-modal="true" aria-labelledby="adventure-title" tabIndex={-1}>
       <header className="adventure-game-head"><div><span className="adventure-kicker">{t.chapter}</span><h2 id="adventure-title">{t.name}</h2></div><div className="adventure-tools"><button type="button" title={mapOnly ? t.scene : t.map} aria-label={mapOnly ? t.scene : t.map} onClick={() => { clearInput(); setMapOnly(v => !v); }}><Map size={19}/></button><button type="button" title={t.fullscreen} aria-label={t.fullscreen} onClick={() => { if (document.fullscreenElement) void document.exitFullscreen().catch(() => {}); else void dialog.current?.requestFullscreen?.().catch(() => {}); }}><Expand size={19}/></button><button type="button" title={t.paused} aria-label={t.paused} onClick={pause}><Pause size={19}/></button><button type="button" title={t.leave} aria-label={t.leave} onClick={leave}><X size={19}/></button></div></header>
       <div className="adventure-objective"><span className="adventure-step">{Math.min(5, currentPhase + 1)}/5</span><strong>{t.goal[currentPhase]}</strong><div className="adventure-counters"><span aria-label={t.footprints}>✦ {snapshot.coins.filter(Boolean).length}/3</span><time>{formatTime(snapshot.elapsed)}</time></div></div>
       <div className="adventure-viewport"><canvas key={String(mapOnly)} ref={canvas} onPointerDown={pointerWalk} aria-label={zh ? '厨房关卡。点击地面移动，或使用下方方向控制。' : 'Kitchen level. Tap the floor to walk, or use the direction controls.'}/>
@@ -216,7 +251,7 @@ function Adventure({ spaceId, zh }: Props) {
       </div>
       <div className="adventure-bottom"><p className="adventure-message" role="status" aria-live="polite">{message}</p><div className="adventure-controls">
         <div className="adventure-direction" role="group" aria-label={zh ? '移动方向' : 'Movement'}>{([{ x: 0, z: -1, icon: ArrowUp, name: zh ? '向上移动' : 'Move up', cls: 'up' }, { x: -1, z: 0, icon: ArrowLeft, name: zh ? '向左移动' : 'Move left', cls: 'left' }, { x: 0, z: 1, icon: ArrowDown, name: zh ? '向下移动' : 'Move down', cls: 'down' }, { x: 1, z: 0, icon: ArrowRight, name: zh ? '向右移动' : 'Move right', cls: 'right' }]).map(({ x, z, icon: Icon, name, cls }) => <button type="button" key={cls} className={cls} aria-label={name} disabled={!loaded || screen !== 'playing'} onPointerDown={e => direction(e, x, z)} onPointerUp={() => { input.current = emptyInput(); }} onPointerCancel={() => { input.current = emptyInput(); }} onLostPointerCapture={() => { input.current = emptyInput(); }} onClick={e => { if (e.detail === 0) { for (let i = 0; i < 5; i++) tick(game.current, { x, z }, .04); sync(); } }}><Icon size={23}/></button>)}</div>
-        <button className="adventure-switch" type="button" onClick={changePet} disabled={!loaded || screen !== 'playing'}><img src={`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/models/pets/${active}.webp`} alt=""/><span><strong>{t[active]}</strong><small>{t.switch} <kbd>Q</kbd></small></span><ArrowLeftRight size={19}/></button>
+        <button className="adventure-switch" type="button" onClick={changePet} disabled={!loaded || screen !== 'playing'}><img src={image(active)} alt=""/><span><strong>{party?.[active].name || t[active]}</strong><small>{t.switch} <kbd>Q</kbd></small></span><ArrowLeftRight size={19}/></button>
         <button className="adventure-action" type="button" onClick={act} disabled={!loaded || screen !== 'playing'}><span>{ability}</span><kbd>E</kbd></button>
       </div></div>
       {(screen === 'paused' || screen === 'won' || error) && <div className="adventure-modal-backdrop"><div className="adventure-modal">
