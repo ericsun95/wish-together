@@ -1,0 +1,25 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import ts from 'typescript';
+const source=fs.readFileSync(new URL('../src/lib/pet-room.ts',import.meta.url),'utf8');
+const js=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+const {advanceRoom,parseRoom,DEFAULT_ROOM}=await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
+assert.deepEqual(parseRoom('{bad'),DEFAULT_ROOM);
+assert.deepEqual(parseRoom('[]'),[],'Empty layout survives reload');
+assert.deepEqual(parseRoom(JSON.stringify([{id:'a',kind:'bed',x:-99,y:999}]))[0],{id:'a',kind:'bed',x:14,y:87});
+assert.deepEqual(parseRoom(JSON.stringify([{id:'x',kind:'invalid',x:30,y:50}])),DEFAULT_ROOM);
+const pets=[{id:'cat',species:'cat'},{id:'dog',species:'dog'}];
+const idle={x:50,y:50,targetX:50,targetY:50,activity:'rest',until:0};
+let a=advanceRoom(pets,{cat:idle,dog:idle},DEFAULT_ROOM,1000,()=>.1);
+assert.equal(a.cat.furniture,'bed');assert.equal(a.dog.furniture,'toy');
+for(let i=0;i<35;i++)a=advanceRoom(pets,a,DEFAULT_ROOM,1100+i*100,()=>.1);
+assert.equal(a.cat.activity,'rest');assert.equal(a.dog.activity,'play');
+const moved=DEFAULT_ROOM.map(f=>f.id==='bed'?{...f,x:70}:f);
+a=advanceRoom(pets,a,moved,4600,()=>.1);assert.equal(a.cat.activity,'walk');assert.equal(a.cat.targetX,70,'Pet follows relocated bed');
+a=advanceRoom(pets,a,[],4800,()=>.1);assert.equal(a.cat.furniture,undefined,'Removed furniture releases its pet');
+a=advanceRoom([pets[1]],{cat:{...idle,furniture:'toy'},dog:idle},DEFAULT_ROOM,1000,()=>.1);assert.equal(a.dog.furniture,'toy','Deleted pet cannot reserve furniture');assert.equal(a.cat,undefined);
+const hello={...idle,activity:'hello',until:9000};a=advanceRoom([pets[0]],{cat:hello},DEFAULT_ROOM,6000,()=>.1);assert.equal(a.cat.activity,'hello');
+let crowded=Object.fromEntries(Array.from({length:8},(_,i)=>[String(i),{...idle}]));
+const eight=Array.from({length:8},(_,i)=>({id:String(i),species:i%2?'dog':'cat'}));
+for(let i=0;i<800;i++) {crowded=advanceRoom(eight,crowded,DEFAULT_ROOM,10000+i*400);for(const p of Object.values(crowded)){assert.ok(p.x>=14&&p.x<=86&&p.y>=35&&p.y<=87);}}
+console.log('Pet room: preferences, movement, furniture removal/relocation, deleted pets, persistence recovery and eight-pet bounds passed.');

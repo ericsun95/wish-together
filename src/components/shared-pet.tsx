@@ -8,7 +8,7 @@ import { LifeModal, MiniAvatar } from './life-ui';
 import { PET_POSES, type PetMood } from '@/lib/pet-play';
 import { PetCarry } from './pet-carry';
 import { PetPortrait } from './pet-portrait';
-import { PetFamily } from './pet-family';
+import { PetRoom } from './pet-room';
 import { PetPlayground } from './pet-playground';
 
 import { MAX_PETS, PET_SPECIES, PET_VARIETIES, petVariety, petImage, petEmoji, type PetSpecies as Species } from '@/lib/pet-catalog';
@@ -158,7 +158,7 @@ function PetHome({ spaceId, zh }: { spaceId: string; zh: boolean }) {
     {error && <p role="alert" className="pet-error">{error}</p>}
     {notice && <p role="status" className="pet-notice">{notice}</p>}
     <p className="pet-capacity">{zh ? `小窝成员 ${pets.length} / ${MAX_PETS}` : `Family ${pets.length} / ${MAX_PETS}`}{pets.length >= MAX_PETS && (zh ? " · 小窝住满啦" : " · Your family is full")}</p>
-    {loaded && pets.length>0 && <><div className="pet-family-picker" role="group" aria-label={zh?'选择宠物':'Choose a pet'}>{pets.map(item=><button type="button" key={item.id} disabled={busy} aria-pressed={!adopting&&item.id===pet?.id} onClick={()=>{setSelected(item.id);setAdopting(false);setNotice('');setPose('sit');}}>{petEmoji(item.species)} {item.name}<small>Lv. {Math.floor(item.experience/100)+1}</small></button>)}{pets.length<MAX_PETS&&<button type="button" disabled={busy} onClick={()=>{setAdopting(true);setName('');setNotice('');}}>＋ {zh?'再领养一只':'Adopt another'}</button>}</div><PetFamily pets={pets} spaceId={spaceId} zh={zh}/></>}
+    {loaded && pets.length>0 && <><div className="pet-family-picker" role="group" aria-label={zh?'选择宠物':'Choose a pet'}>{pets.map(item=><button type="button" key={item.id} disabled={busy} aria-pressed={!adopting&&item.id===pet?.id} onClick={()=>{setSelected(item.id);setAdopting(false);setNotice('');setPose('sit');}}>{petEmoji(item.species)} {item.name}<small>Lv. {Math.floor(item.experience/100)+1}</small></button>)}{pets.length<MAX_PETS&&<button type="button" disabled={busy} onClick={()=>{setAdopting(true);setName('');setNotice('');}}>＋ {zh?'再领养一只':'Adopt another'}</button>}</div><PetRoom pets={pets} spaceId={spaceId} zh={zh}/></>}
     {!loaded ? <p className="life-empty">{error ? (zh ? '点击刷新，再来看看它。' : 'Refresh to try again.') : (zh ? '正在布置宠物的小家…' : 'Getting your pet’s home ready…')}</p> : !pet || adopting ?
       <form className="pet-adoption" onSubmit={saveName}>
         <div className="pet-scene"><PetPortrait species={species} appearance={appearance}/><p>{zh ? '一只小可爱，两个人的牵挂' : 'One little friend. Two loving hearts.'}</p></div>
