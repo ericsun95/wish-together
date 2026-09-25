@@ -8,6 +8,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test:db": "node scripts/test-database.mjs && node scripts/test-life.mjs",
+    "test:room": "node scripts/test-pet-room.mjs",
     "test:adventure": "node scripts/test-adventure.mjs",
     "test:life": "node scripts/test-life.mjs"
   },
