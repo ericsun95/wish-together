@@ -9,7 +9,7 @@ import { LifeDashboard, DateAndRandom } from "@/components/life-dashboard";
 import { WishExperience } from "@/components/wish-experience";
 import { SpaceGate } from "@/components/space-gate";
 import { RoamingPet } from "@/components/roaming-pet";
-import { getGoogleMapsUrl, getMapQuery, getMapSource } from "@/lib/maps";
+import { TaskMap } from "@/components/task-map";
 import { Locale, messages } from "@/lib/messages";
 import { supabase } from "@/lib/supabase";
 
@@ -68,9 +68,6 @@ export default function Home() {
   const [view, setView] = useState<View>("wishes");
   const [statusFilter, setStatusFilter] = useState<"all" | WishStatus>("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
-  const [mapWishId, setMapWishId] = useState<string | null>(null);
-  const [mapSearch, setMapSearch] = useState("");
-  const [mapSearchQuery, setMapSearchQuery] = useState("");
   const [adding, setAdding] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [backgroundPhoto, setBackgroundPhoto] = useState<string | null>(null);
@@ -187,10 +184,6 @@ export default function Home() {
     if (statusFilter !== "all" && wish.status !== statusFilter) return false;
     return categoryFilter === "all" || wish.category === categoryFilter;
   });
-  const mappedWishes = wishes.filter((wish) => getMapSource(wish.address, wish.url));
-  const mapWish = mappedWishes.find((wish) => wish.id === mapWishId) ?? mappedWishes[0];
-  const mapSource = mapWish ? getMapSource(mapWish.address, mapWish.url) : "";
-  const activeMapQuery = mapSearchQuery || (mapWish ? getMapQuery(mapSource, mapWish.title) : "");
   const checklistTotal = wishes.reduce((total, wish) => total + wish.checklist.length, 0);
   const checklistDone = wishes.reduce((total, wish) => total + wish.checklist.filter((item) => item.completed).length, 0);
   const categories = Object.entries(wishes.reduce<Record<string, number>>((all, wish) => {
@@ -394,19 +387,7 @@ export default function Home() {
           {hasFilters && <button type="button" className="clear-filters" onClick={() => { setStatusFilter("all"); setCategoryFilter("all"); }}><X size={14} />{t.clearFilters}</button>}
         </div>}
 
-        {view === "adventure" ? <SoloAdventure spaceId={spaceId} zh={locale==="zh-CN"} onPets={()=>setView("pet")}/> : view === "pet" ? (spaceId ? <SharedPet key={spaceId} spaceId={spaceId} zh={locale==="zh-CN"}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起养宠物。":"Sign in to raise your pet together."}</p>) : view === "life" ? (spaceId ? <LifeDashboard spaceId={spaceId} zh={locale==="zh-CN"} wishes={wishes} onWish={wish=>setExperienceId(wish.id)} onBackground={memoryBackground}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起记录纪念日和回忆。":"Sign in to share your dates and memories."}</p>) : view === "map" ? <div className="map-view">
-          <div className="map-heading"><h1>{t.mapTitle}</h1><p>{mapWish ? mapSource : t.mapEmpty}</p></div>
-          <form className="map-search" onSubmit={(event) => { event.preventDefault(); setMapSearchQuery(getMapQuery(mapSearch)); }}>
-            <Search size={17} aria-hidden="true" />
-            <label><span>{t.mapSearch}</span><input value={mapSearch} onChange={(event) => setMapSearch(event.target.value)} placeholder={t.mapSearchHint} /></label>
-            <button className="secondary" type="submit" disabled={!mapSearch.trim()}>{t.mapSearchAction}</button>
-            {mapSearchQuery && <button className="icon-button" type="button" aria-label={t.clearFilters} title={t.clearFilters} onClick={() => { setMapSearch(""); setMapSearchQuery(""); }}><X size={17} /></button>}
-          </form>
-          {activeMapQuery ? <div className="map-layout">
-            <div className="map-places" role="list">{mappedWishes.map((wish) => { const source = getMapSource(wish.address, wish.url); return <button type="button" role="listitem" key={wish.id} aria-pressed={!mapSearchQuery && wish.id === mapWish?.id} onClick={() => { setMapWishId(wish.id); setMapSearch(""); setMapSearchQuery(""); }}><MapPin size={16} /><span><strong>{wish.title}</strong><small>{source}</small></span></button>; })}</div>
-            <div className="map-frame"><iframe title={`${t.mapTitle}: ${mapSearchQuery || mapWish?.title || mapSearch}`} src={`https://www.google.com/maps?q=${encodeURIComponent(activeMapQuery)}&output=embed`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" /><a href={mapSearchQuery ? getGoogleMapsUrl(mapSearchQuery) : getGoogleMapsUrl(mapSource, mapWish?.title)} target="_blank" rel="noopener noreferrer">{t.openInMaps}<ArrowUpRight size={14} /></a></div>
-          </div> : <div className="map-empty"><MapPin size={28} /><p>{t.mapEmpty}</p></div>}
-        </div> : view === "dashboard" ? <div className="dashboard-view">
+        {view === "adventure" ? <SoloAdventure spaceId={spaceId} zh={locale==="zh-CN"} onPets={()=>setView("pet")}/> : view === "pet" ? (spaceId ? <SharedPet key={spaceId} spaceId={spaceId} zh={locale==="zh-CN"}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起养宠物。":"Sign in to raise your pet together."}</p>) : view === "life" ? (spaceId ? <LifeDashboard spaceId={spaceId} zh={locale==="zh-CN"} wishes={wishes} onWish={wish=>setExperienceId(wish.id)} onBackground={memoryBackground}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起记录纪念日和回忆。":"Sign in to share your dates and memories."}</p>) : view === "map" ? <TaskMap wishes={wishes} zh={locale==="zh-CN"} onDetails={spaceId?setExperienceId:undefined}/> : view === "dashboard" ? <div className="dashboard-view">
           <div className="metric-grid">
             <div><strong>{wishes.length}</strong><span>{t.totalWishes}</span></div>
             <div><strong>{wishes.filter((wish) => wish.status === "wanted").length}</strong><span>{t.wantedStatus}</span></div>
