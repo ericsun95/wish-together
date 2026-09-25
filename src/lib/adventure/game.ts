@@ -161,3 +161,20 @@ export function restoreGame(raw: string | null): Game | null {
     return { ...freshGame(), active: value.active, pets: value.pets, stool: value.stool, powered: value.powered, snack: value.snack, coins: value.coins, elapsed: value.elapsed, catches: value.catches, robot: { ...value.robot, heading: Number.isFinite(value.robot.heading) ? value.robot.heading : 0 }, won: value.won, event: 'resumed', eventId: 1 };
   } catch { return null; }
 }
+
+/** Tapping a solid interactive object walks to its reachable edge, never through it. */
+export function tapRoute(s: Game, target: Point): Point[] {
+  if(s.grab) return [{x:target.x-s.grab.x,z:target.z-s.grab.z}];
+  const direct = route(s, target); if (direct.length) return direct;
+  const object = distance(target, s.stool) < .65 && !s.powered ? {point:s.stool,reach:1.15}
+    : distance(target, DOCK) < .65 && isDocked(s) && s.active === 'cat' ? {point:DOCK,reach:1.2}
+    : distance(target, SNACK) < .65 && s.powered && s.active === 'cat' ? {point:SNACK,reach:.9} : null;
+  if (!object) return [];
+  const candidates: Point[] = [];
+  for(let x=Math.round(object.point.x*2)/2-1.5;x<=object.point.x+1.5;x+=.5)
+    for(let z=Math.round(object.point.z*2)/2-1.5;z<=object.point.z+1.5;z+=.5)
+      if(distance({x,z},object.point)<object.reach)candidates.push({x,z});
+  candidates.sort((a,b)=>distance(a,s.pets[s.active])-distance(b,s.pets[s.active]));
+  for(const candidate of candidates){const path=route(s,candidate);if(path.length)return path;}
+  return [];
+}
