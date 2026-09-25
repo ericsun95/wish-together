@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ArrowLeftRight, Check, Compass, Expand, Home, Map, Pause, Play, RotateCcw, Star, X } from 'lucide-react';
-import { action, announce, freshGame, gateOpen, interact, phase, restoreGame, route, stars, switchPet, tick, type Game, type Point } from '@/lib/adventure/game';
+import { action, announce, freshGame, gateOpen, interact, phase, restoreGame, tapRoute, stars, switchPet, tick, type Game, type Point } from '@/lib/adventure/game';
 import { supabase } from '@/lib/supabase';
 import { petImage } from '@/lib/pet-catalog';
 import { selectParty, type AdventurePet } from '@/lib/adventure/party';
@@ -35,7 +35,7 @@ const copy = {
     },
     pause: '休息一下', pauseNote: '机器人也暂停了，放心慢慢想。', leave: '保存并回大厅', continue: '继续行动', retry: '再来一局', won: '零食，救回来啦！',
     stats: ['完成任务', '收齐三枚爪印', '一次也没被发现'], time: '用时', catches: '被发现', best: '最佳纪录', footprints: '爪印', alert: '机器人注意值',
-    switch: '切换伙伴', interact: '互动', map: '简洁地图', scene: '立体厨房', loading: '正在布置厨房…', error: '立体画面暂时无法使用，可以换成简洁地图继续玩。', fullscreen: '全屏', paused: '暂停',
+    switch: '切换伙伴', interact: '互动', map: '俯视厨房', scene: '立体厨房', loading: '正在布置厨房…', error: '立体画面暂时无法使用，可以换成俯视厨房继续玩。', fullscreen: '全屏', paused: '暂停',
     orient: '横屏玩，厨房看得更清楚', repeat: '重新开始会替换当前关卡进度，最佳纪录会保留。', cancel: '算了，继续这局', confirm: '重新开始',
   },
   en: {
@@ -59,7 +59,7 @@ const copy = {
     },
     pause: 'Take a breather', pauseNote: 'The vacuum is paused too. Take your time.', leave: 'Save & return to lobby', continue: 'Continue mission', retry: 'Play again', won: 'Treats, rescued!',
     stats: ['Complete the mission', 'Collect all three paw tokens', 'Never get spotted'], time: 'Time', catches: 'Spotted', best: 'Personal best', footprints: 'Paws', alert: 'Vacuum awareness',
-    switch: 'Switch pet', interact: 'Interact', map: 'Simple map', scene: '3D kitchen', loading: 'Setting up the kitchen…', error: 'The 3D view is unavailable. Switch to the simple map to keep playing.', fullscreen: 'Fullscreen', paused: 'Pause',
+    switch: 'Switch pet', interact: 'Interact', map: 'Kitchen map', scene: '3D kitchen', loading: 'Setting up the kitchen…', error: 'The 3D view is unavailable. Switch to the kitchen map to keep playing.', fullscreen: 'Fullscreen', paused: 'Pause',
     orient: 'Turn your phone sideways for a wider view', repeat: 'A new run replaces your current progress. Your best record stays.', cancel: 'Keep this run', confirm: 'Start over',
   },
 };
@@ -104,9 +104,11 @@ export function Adventure({ spaceId, zh, onPets, pets }: Props & { pets: Adventu
   const [screen, setScreen] = useState<Screen>('lobby');
   const screenRef = useRef(screen); screenRef.current = screen;
   const [hasSave, setHasSave] = useState(false), [record, setRecord] = useState<RecordScore | null>(null);
-  const [saveOk, setSaveOk] = useState(true), [mapOnly, setMapOnly] = useState(false), [loaded, setLoaded] = useState(false), [error, setError] = useState(false), [confirmReset, setConfirmReset] = useState(false);
+  const [saveOk, setSaveOk] = useState(true), [mapOnly, setMapOnly] = useState(true), [loaded, setLoaded] = useState(false), [error, setError] = useState(false), [confirmReset, setConfirmReset] = useState(false);
   const input = useRef(emptyInput()), keys = useRef(new Set<string>()), path = useRef<Point[]>([]), view = useRef<View | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null), frame = useRef(0), dialog = useRef<HTMLDivElement>(null), launch = useRef<HTMLButtonElement>(null);
+  const [zoom, setZoom] = useState(1);
+  const zoomRef = useRef(zoom); zoomRef.current = zoom;
   const running = screen !== 'lobby';
   const storageReady = useRef(false), hasStarted = useRef(false);
   const sync = useCallback(() => setSnapshot(structuredClone(game.current)), []);
@@ -171,6 +173,7 @@ export function Adventure({ spaceId, zh, onPets, pets }: Props & { pets: Adventu
             const point = path.current[0]; if (point) { const d = Math.hypot(point.x - pet.x, point.z - pet.z); movement.x = (point.x - pet.x) / d; movement.z = (point.z - pet.z) / d; }
           }
           const eventId = state.eventId; tick(state, movement, dt);
+          if(state.eventId !== eventId && ['docked','caught'].includes(state.event)) path.current = [];
           if (path.current.length && Math.hypot(pet.x - before.x, pet.z - before.z) < .001) stuckTime += dt; else stuckTime = 0;
           if (stuckTime > .6) { path.current = []; announce(state, 'blocked'); stuckTime = 0; }
           uiTime += dt; saveTime += dt;
@@ -178,7 +181,7 @@ export function Adventure({ spaceId, zh, onPets, pets }: Props & { pets: Adventu
           if (saveTime > 2 || state.won) { persist(); saveTime = 0; }
           if (state.won) { clearInput(); setScreen('won'); }
         }
-        engine?.render(game.current, screenRef.current === 'playing' ? dt : 0, reduced.matches);
+        engine?.render(game.current, screenRef.current === 'playing' ? dt : 0, reduced.matches, path.current, zoomRef.current);
         frame.current = requestAnimationFrame(draw);
       }
       frame.current = requestAnimationFrame(draw);
@@ -215,7 +218,7 @@ export function Adventure({ spaceId, zh, onPets, pets }: Props & { pets: Adventu
     const rect = event.currentTarget.getBoundingClientRect();
     const point = view.current?.pick((event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height, game.current.pets[game.current.active].y > 0);
     if (!point) return;
-    path.current = game.current.grab ? [point] : route(game.current, point);
+    path.current = tapRoute(game.current, point);
     if (!path.current.length) { announce(game.current, 'blocked'); sync(); }
   }
   function direction(event: ReactPointerEvent<HTMLButtonElement>, x: number, z: number) {
@@ -245,6 +248,7 @@ export function Adventure({ spaceId, zh, onPets, pets }: Props & { pets: Adventu
       <div className="adventure-objective"><span className="adventure-step">{Math.min(5, currentPhase + 1)}/5</span><strong>{t.goal[currentPhase]}</strong><div className="adventure-counters"><span aria-label={t.footprints}>✦ {snapshot.coins.filter(Boolean).length}/3</span><time>{formatTime(snapshot.elapsed)}</time></div></div>
       <div className="adventure-viewport"><canvas key={String(mapOnly)} ref={canvas} onPointerDown={pointerWalk} aria-label={zh ? '厨房关卡。点击地面移动，或使用下方方向控制。' : 'Kitchen level. Tap the floor to walk, or use the direction controls.'}/>
         {!loaded && !error && <div className="adventure-loading" role="status"><Compass size={28}/>{t.loading}</div>}
+        {mapOnly && <div className="adventure-map-zoom" role="group" aria-label={zh?'地图缩放':'Map zoom'}><button type="button" onClick={()=>setZoom(v=>v===1?1.5:v===1.5?2:1)}>{zoom===1?(zh?'放大查看 ＋':'Zoom in ＋'):`${zoom}× ${zh?'跟随宠物':'Follow pet'}`}</button>{zoom>1&&<button type="button" onClick={()=>setZoom(1)}>{zh?'全图':'Overview'}</button>}</div>}
         <div className="adventure-awareness" aria-label={t.alert}><span>◉</span><meter min={0} max={100} value={snapshot.alert} aria-label={t.alert}/></div>
         <span className="adventure-orient">{t.orient}</span>
         {snapshot.powered && <div className={`adventure-gate-status ${gateOpen(snapshot) ? 'is-open' : ''}`}>{zh ? (gateOpen(snapshot) ? '门已打开 · 狗狗守住' : '门关闭 · 需要狗狗踩垫') : (gateOpen(snapshot) ? 'Gate open · dog is holding' : 'Gate shut · dog needs the pad')}</div>}

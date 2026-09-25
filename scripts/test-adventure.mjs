@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import ts from 'typescript';
 const source = fs.readFileSync(new URL('../src/lib/adventure/game.ts', import.meta.url), 'utf8');
 const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { freshGame, action, interact, tick, route, switchPet, isDocked, gateOpen, restoreGame, stars, distance, BED, PLATE, SNACK } = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
+const { freshGame, action, interact, tick, route, tapRoute, switchPet, isDocked, gateOpen, restoreGame, stars, distance, BED, DOCK, PLATE, SNACK } = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
 function go(s, target) {
   const path = route(s, target);
   assert.ok(path.length || distance(s.pets[s.active], target) < .4, `No route to ${JSON.stringify(target)}`);
@@ -60,3 +60,27 @@ assert.equal(selectParty(family,{cat:'deleted',dog:'c1'}).dog.id,'d1','Deleted o
 assert.equal(selectParty(family,{cat:'deleted'}).cat.id,'c1');
 assert.equal(selectParty(family.map(p=>p.id==='d1'?{...p,name:'Renamed'}:p),{}).dog.name,'Renamed');
 console.log('Adventure family selection: owned appearances, names, multiple pets, missing species and stale preferences passed.');
+
+const tap = freshGame();
+const approach = tapRoute(tap, tap.stool);
+assert.ok(approach.length, 'A stool click routes to a reachable interaction point');
+assert.ok(distance(approach.at(-1), tap.stool) < 1.2);
+for(const point of approach){for(let i=0;i<700&&distance(tap.pets.dog,point)>.15;i++){const d=distance(tap.pets.dog,point);tick(tap,{x:(point.x-tap.pets.dog.x)/d,z:(point.z-tap.pets.dog.z)/d},1/60);}}
+assert.equal(action(tap),'grab','Tap movement must stop inside the actual interaction range');
+assert.equal(tapRoute(tap, SNACK).length, 0, 'Object snapping cannot bypass a closed gate');
+assert.equal(tapRoute(tap, {x:-1,z:5}).length, 0);
+const cameraSource=fs.readFileSync(new URL('../src/lib/adventure/map-camera.ts',import.meta.url),'utf8');
+const cameraJs=ts.transpileModule(cameraSource,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+const {mapFrame,mapPick}=await import(`data:text/javascript;base64,${Buffer.from(cameraJs).toString('base64')}`);
+for(const [w,h] of [[1200,450],[390,450],[800,220]])for(const zoom of [1,1.5,2])for(const focus of [BED,SNACK]){
+  const frame=mapFrame(w,h,zoom,focus),x=(frame.left+focus.x*frame.unit)/w,y=(frame.top+focus.z*frame.unit)/h;
+  const picked=mapPick(frame,w,h,x,y);assert.ok(distance(picked,focus)<1e-9,'Zoom and follow keep clicking aligned');
+  assert.ok(x>=0&&x<=1&&y>=0&&y<=1,'Followed pet stays visible');
+}
+const fit=mapFrame(1200,450,1,BED);assert.equal(mapPick(fit,1200,450,0,0),null,'Outside-map clicks are ignored');
+console.log('Map: object approach, closed gate, zoom/follow picking and viewport bounds passed.');
+
+interact(tap);assert.ok(tap.grab);
+const park=tapRoute(tap,DOCK)[0];
+for(let i=0;i<700&&!isDocked(tap);i++){const d=distance(tap.pets.dog,park);tick(tap,{x:(park.x-tap.pets.dog.x)/Math.max(.01,d),z:(park.z-tap.pets.dog.z)/Math.max(.01,d)},1/60);}
+assert.ok(isDocked(tap),'Clicking the dock while dragging places the stool, accounting for the grip offset');

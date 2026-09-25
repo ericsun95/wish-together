@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { petImage } from '../pet-catalog';
 import type { Party } from './party';
+import { createMap } from './map';
 import { BED, COINS, COUNTER, DOCK, GATE, ISLAND, PLATE, ROOM, SNACK, SWITCH, WALLS, gateOpen, isDocked, type Game, type Point, type Species } from './game';
 
-export type View = { resize: (w: number, h: number) => void; render: (state: Game, dt: number, reduced: boolean) => void; pick: (x: number, y: number, elevated: boolean) => Point | null; dispose: () => void };
+export type View = { resize: (w: number, h: number) => void; render: (state: Game, dt: number, reduced: boolean, trail?: Point[], zoom?: number) => void; pick: (x: number, y: number, elevated: boolean) => Point | null; dispose: () => void };
 export async function createScene(canvas: HTMLCanvasElement, zh: boolean, mapOnly: boolean, signal: AbortSignal, party: Party): Promise<View> {
   if (signal.aborted) throw new DOMException('Cancelled', 'AbortError');
   if (mapOnly) return createMap(canvas, zh, party);
@@ -11,15 +12,15 @@ export async function createScene(canvas: HTMLCanvasElement, zh: boolean, mapOnl
   if (!context) return createMap(canvas, zh, party);
   const renderer = new THREE.WebGLRenderer({ canvas, context, antialias: true });
   renderer.setClearColor(0xf4e9d8); renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = .95;
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   const scene = new THREE.Scene();
   const camera = new THREE.OrthographicCamera(-8, 8, 6, -6, .1, 80);
   camera.position.set(7, 18, 17); camera.lookAt(7, 0, 4.8);
   const resources: { dispose: () => void }[] = [];
   const own = <T extends { dispose: () => void }>(value: T): T => { resources.push(value); return value; };
-  scene.add(new THREE.HemisphereLight(0xfff5df, 0xa7b4c1, 2.3));
-  const sun = new THREE.DirectionalLight(0xffe8c0, 3.3); sun.position.set(-4, 14, 5); sun.castShadow = true;
+  scene.add(new THREE.HemisphereLight(0xfff5df, 0xa7b4c1, 1.7));
+  const sun = new THREE.DirectionalLight(0xffe8c0, 2.3); sun.position.set(-4, 14, 5); sun.castShadow = true;
   sun.shadow.mapSize.set(1024, 1024); Object.assign(sun.shadow.camera, { left: -14, right: 14, top: 14, bottom: -14 }); sun.shadow.normalBias = .04; scene.add(sun);
   const mat = (color: number) => own(new THREE.MeshStandardMaterial({ color, roughness: .82 }));
   const mint = mat(0x547c72), cream = mat(0xf5ebd9), wood = mat(0xd4a976), dark = mat(0x324853), white = mat(0xfffaf1), peach = mat(0xe7956d), brass = mat(0xcba363), blue = mat(0x759cab);
@@ -120,39 +121,5 @@ export async function createScene(canvas: HTMLCanvasElement, zh: boolean, mapOnl
       return raycaster.ray.intersectPlane(plane, hit) ? { x: hit.x, z: hit.z } : null;
     },
     dispose() { resources.forEach(r => r.dispose()); sun.shadow.map?.dispose(); renderer.dispose(); renderer.forceContextLoss(); },
-  };
-}
-
-/** A playable low-power map, also available when WebGL is unavailable. */
-function createMap(canvas: HTMLCanvasElement, zh: boolean, party: Party): View {
-  const context = canvas.getContext('2d'); if (!context) throw new Error('Canvas unavailable');
-  const ctx: CanvasRenderingContext2D = context;
-  let width = 1, height = 1, unit = 1, left = 0, top = 0;
-  const imgs = { cat: new Image(), dog: new Image() };
-  for (const species of ['cat', 'dog'] as const) imgs[species].src = petImage(species, party[species].appearance);
-  const rect = (r: { x: number; z: number; w: number; h: number }, color: string) => { ctx.fillStyle = color; ctx.fillRect(left + r.x * unit, top + r.z * unit, r.w * unit, r.h * unit); };
-  function circle(p: Point, radius: number, color: string) { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(left + p.x * unit, top + p.z * unit, radius * unit, 0, Math.PI * 2); ctx.fill(); }
-  function text(value: string, p: Point) { ctx.fillStyle = '#284e43'; ctx.font = `600 ${Math.max(9, unit * .28)}px system-ui`; ctx.textAlign = 'center'; ctx.fillText(value, left + p.x * unit, top + p.z * unit); }
-  return {
-    resize(w, h) { width = w; height = h; canvas.width = w * Math.min(devicePixelRatio, 2); canvas.height = h * Math.min(devicePixelRatio, 2); ctx.setTransform(canvas.width / w, 0, 0, canvas.height / h, 0, 0); unit = Math.min(w / 15, h / 11); left = (w - ROOM.w * unit) / 2; top = (h - ROOM.h * unit) / 2; },
-    render(s) {
-      ctx.clearRect(0, 0, width, height); ctx.fillStyle = '#f4e9d8'; ctx.fillRect(0, 0, width, height);
-      rect({ x: 0, z: 0, w: 14, h: 10 }, '#e5dac2');
-      for (const r of [COUNTER, ISLAND, { x: 8.76, z: .525, w: 1.18, h: 1.45 }, ...WALLS]) rect(r, '#648b7e');
-      if (!gateOpen(s)) rect(GATE, '#c17e5c');
-      circle(BED, 1.1, '#a7cbb9'); circle(DOCK, .55, isDocked(s) ? '#9ac4af' : '#e7b966'); circle(PLATE, .6, gateOpen(s) ? '#69b491' : '#d5ad63');
-      circle(s.stool, .43, '#c78366'); circle(SWITCH, .24, s.powered ? '#4aab7b' : '#e4b556');
-      if (!s.snack) { circle(SNACK, .35, '#dc9760'); text('🍪', SNACK); }
-      COINS.forEach((p, i) => { if (!s.coins[i]) circle(p, .17, '#eab949'); });
-      if (s.powered) { ctx.fillStyle = '#ecb24744'; ctx.beginPath(); ctx.moveTo(left + s.robot.x * unit, top + s.robot.z * unit); ctx.arc(left + s.robot.x * unit, top + s.robot.z * unit, 2.7 * unit, Math.PI / 2 - s.robot.heading - .87, Math.PI / 2 - s.robot.heading + .87); ctx.closePath(); ctx.fill(); }
-      circle(s.robot, .37, '#415668');
-      text(zh ? '电源' : 'Power', { ...SWITCH, z: .85 }); text(zh ? '门垫' : 'Pad', { ...PLATE, z: PLATE.z + 1 }); text(zh ? '回家' : 'Home', { x: 1.7, z: 9.65 });
-      for (const species of ['cat', 'dog'] as const) {
-        const p = s.pets[species]; if (s.active === species) circle(p, .55, '#68b49d66');
-        const img = imgs[species]; if (img.complete && img.naturalWidth) ctx.drawImage(img, left + (p.x - .5) * unit, top + (p.z - .8) * unit, unit, unit); else text(species === 'cat' ? '🐈' : '🐕', p);
-      }
-    },
-    pick(x, y) { return { x: (x * width - left) / unit, z: (y * height - top) / unit }; },
-    dispose() {},
   };
 }
