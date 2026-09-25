@@ -1,4 +1,6 @@
 "use client";
+import { PlaceSearch } from "@/components/place-search";
+import "./wish-editor.css";
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
@@ -196,6 +198,9 @@ export default function Home() {
   const themeImage = (selected: Theme) => themeBackground(selected, basePath);
   const themeStyle = { "--theme-image": themeImage(theme) } as CSSProperties;
 
+  const [wishSaving, setWishSaving] = useState(false);
+  const wishSaveLock = useRef(false);
+
   function resetEditor() {
     setTitle(""); setUrl(""); setAddress(""); setCategory(""); setNote(""); setStatus("wanted"); setPlannedDate(""); setCompletionNote("");
     setChecklistDraft([]); setEditingId(null); setError(""); setAdding(false);
@@ -270,8 +275,11 @@ export default function Home() {
 
   async function saveWish(event: React.FormEvent) {
     event.preventDefault();
+    if (wishSaveLock.current) return;
     if (url.trim() && !validUrl(url.trim())) return setError(t.urlError);
     if (!title.trim()) return setError(t.titleError);
+    wishSaveLock.current = true; setWishSaving(true); setError("");
+    try {
     const draft = checklistDraft.map((item) => ({ ...item, label: item.label.trim() })).filter((item) => item.label);
     let newWish: Wish;
     if (supabase && spaceId) {
@@ -322,6 +330,8 @@ export default function Home() {
     setWishes((current) => [newWish, ...current]);
     resetEditor();
     setView("wishes");
+    } catch { setError(t.wishSaveError); }
+    finally { wishSaveLock.current = false; setWishSaving(false); }
   }
 
   async function toggleWish(wish: Wish) {
@@ -441,29 +451,40 @@ export default function Home() {
       </section>
 
       {spaceId && experienceId && wishes.find(w=>w.id===experienceId) && <WishExperience key={`${spaceId}:${experienceId}`} spaceId={spaceId} wish={wishes.find(w=>w.id===experienceId)!} wishes={wishes} zh={locale==="zh-CN"} onClose={()=>setExperienceId(null)} onBackground={memoryBackground}/>}
-      {adding && <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) resetEditor(); }}>
-        <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
-          <div className="dialog-head"><h2 id="dialog-title">{editingId ? t.edit : t.add}</h2><button type="button" className="icon-button" aria-label={t.cancel} onClick={resetEditor}><X size={20} /></button></div>
-          <form onSubmit={saveWish}>
+      {adding && <div className="dialog-backdrop">
+        <div className="dialog wish-editor-dialog" onKeyDown={event => {
+          if (event.key !== "Tab") return;
+          const elements = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), a[href], summary')).filter(element => element.getClientRects().length > 0);
+          const first = elements[0], last = elements[elements.length - 1];
+          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+          else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+        }} role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+          <div className="dialog-head"><h2 id="dialog-title">{editingId ? t.edit : t.add}</h2><button type="button" className="icon-button" aria-label={t.cancel} disabled={wishSaving} onClick={resetEditor}><X size={20} /></button></div>
+          <form onSubmit={saveWish} aria-busy={wishSaving}>
+            <fieldset className="wish-editor-body" disabled={wishSaving}>
+            <p className="wish-editor-intro">{locale === "zh-CN" ? "先记下想做的事，地点和计划可以慢慢补充。" : "Start with your wish. Add a place and a plan whenever you’re ready."}</p>
             <label>{t.title}<input autoFocus required value={title} onChange={(e) => { setTitle(e.target.value); setError(""); }} /></label>
-            <label>{t.pasteLink} <span className="optional-label">{t.optional}</span><input type="url" value={url} onChange={(e) => { setUrl(e.target.value); setError(""); }} placeholder="https://" /></label>
-            <label>{t.address} <span className="optional-label">{t.optional}</span><input value={address} onChange={(e) => setAddress(e.target.value)} placeholder={t.addressPlaceholder} /></label>
-            <label>{t.category} <span className="optional-label">{t.optional}</span><input value={category} onChange={(e) => setCategory(e.target.value)} /></label>
-            <label>{t.note}<textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} /></label>
+            <PlaceSearch value={address} onChange={setAddress} zh={locale === "zh-CN"}/>
+            <label>{t.category} <span className="optional-label">{t.optional}</span><input list="wish-categories" value={category} onChange={(e) => setCategory(e.target.value)} placeholder={locale === "zh-CN" ? "例如：旅行、美食、约会" : "Travel, food, date night…"}/><datalist id="wish-categories">{categoryNames.map(name => <option key={name} value={name}/>)}</datalist></label>
             <fieldset className="status-editor"><legend>{t.status}</legend><div className="segmented-control">
               {(["wanted", "planned", "done"] as WishStatus[]).map((option) => <button type="button" key={option} aria-pressed={status === option} onClick={() => setStatus(option)}>{option === "wanted" ? t.wantedStatus : option === "planned" ? t.plannedStatus : t.doneStatus}</button>)}
             </div></fieldset>
-            {status === "planned" && <label>{t.plannedDate} <span className="optional-label">{t.optional}</span><input type="date" value={plannedDate} onChange={(e) => setPlannedDate(e.target.value)} /></label>}
+            {status === "planned" && <label>{t.plannedDate} <span className="optional-label">{t.optional}</span><input type="date" value={plannedDate} onInput={(e) => setPlannedDate(e.currentTarget.value)} onChange={(e) => setPlannedDate(e.target.value)} /></label>}
             {status === "done" && <label>{t.completionNote} <span className="optional-label">{t.optional}</span><textarea value={completionNote} onChange={(e) => setCompletionNote(e.target.value)} rows={2} /></label>}
+            <details className="wish-editor-more" open={!!(note || url || checklistDraft.length)}><summary>{locale === "zh-CN" ? "备注、链接与准备清单" : "Notes, link & checklist"}</summary>
+            <label>{t.note}<textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} /></label>
+            <label>{t.pasteLink}<input type="url" value={url} onChange={(e) => { setUrl(e.target.value); setError(""); }} placeholder="https://" /></label>
             <fieldset className="checklist-editor"><legend>{t.checklist} <span className="optional-label">{t.optional}</span></legend>
               {checklistDraft.map((item, index) => <div key={item.id}>
-                <input value={item.label} onChange={(event) => setChecklistDraft((items) => items.map((entry, itemIndex) => itemIndex === index ? { ...entry, label: event.target.value } : entry))} />
+                <input aria-label={`${t.checklistItem} ${index + 1}`} value={item.label} onChange={(event) => setChecklistDraft((items) => items.map((entry, itemIndex) => itemIndex === index ? { ...entry, label: event.target.value } : entry))} />
                 <button type="button" className="icon-button" aria-label={t.removeChecklistItem} onClick={() => setChecklistDraft((items) => items.filter((_, itemIndex) => itemIndex !== index))}><X size={16} /></button>
               </div>)}
               <button type="button" className="text-action" onClick={() => setChecklistDraft((items) => [...items, { id: crypto.randomUUID(), label: "", completed: false, position: items.length }])}><ListPlus size={16} />{t.checklistItem}</button>
             </fieldset>
+            </details>
             {error && <p className="form-error" role="alert">{error}</p>}
-            <div className="dialog-actions"><button type="button" className="secondary" onClick={resetEditor}>{t.cancel}</button><button type="submit" className="primary">{editingId ? t.saveChanges : t.save}</button></div>
+            </fieldset>
+            <div className="dialog-actions"><button type="button" className="secondary" disabled={wishSaving} onClick={resetEditor}>{t.cancel}</button><button type="submit" className="primary" disabled={wishSaving}>{wishSaving ? (locale === "zh-CN" ? "保存中…" : "Saving…") : editingId ? t.saveChanges : t.save}</button></div>
           </form>
         </div>
       </div>}
