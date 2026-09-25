@@ -47,3 +47,16 @@ tick(caught, { x: .1, z: 1 }, .05); assert.equal(caught.catches, 1); assert.equa
 for (const raw of ['null', '{}', 'bad', JSON.stringify({ ...s, pets: { ...s.pets, cat: { x: 999, z: 2, y: 0, heading: 0 } } }), JSON.stringify({ ...s, robot: { ...s.robot, waypoint: 99 } })]) assert.equal(restoreGame(raw), null);
 assert.equal(restoreGame(JSON.stringify({ ...freshGame(), grab: { x: 1, z: 1 }, alert: 99 }))?.grab, null, 'Resume clears transient controls');
 console.log('PASS: complete three-star solo run with real movement/pathfinding; collision and gate rules; parked partner; capture checkpoint; save validation; completion freeze.');
+
+const partySource = fs.readFileSync(new URL('../src/lib/adventure/party.ts', import.meta.url), 'utf8');
+const partyJs = ts.transpileModule(partySource, {compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+const {selectParty}=await import(`data:text/javascript;base64,${Buffer.from(partyJs).toString('base64')}`);
+const family=[{id:'c1',species:'cat',name:'Cream',appearance:'silver'},{id:'d1',species:'dog',name:'Snow',appearance:'pom'},{id:'c2',species:'cat',name:'Tabby',appearance:'classic'},{id:'r',species:'rabbit',name:'Bun',appearance:'lop'}];
+assert.equal(selectParty([],{}),null);
+assert.equal(selectParty(family.filter(p=>p.species!=='dog'),{}),null,'A rabbit cannot silently replace a missing dog');
+assert.equal(selectParty(family,{}).cat.appearance,'silver');
+assert.equal(selectParty(family,{cat:'c2'}).cat.name,'Tabby');
+assert.equal(selectParty(family,{cat:'deleted',dog:'c1'}).dog.id,'d1','Deleted or wrong-species preferences safely fall back to adopted pets');
+assert.equal(selectParty(family,{cat:'deleted'}).cat.id,'c1');
+assert.equal(selectParty(family.map(p=>p.id==='d1'?{...p,name:'Renamed'}:p),{}).dog.name,'Renamed');
+console.log('Adventure family selection: owned appearances, names, multiple pets, missing species and stale preferences passed.');

@@ -1,13 +1,14 @@
 import * as THREE from 'three';
-import { createPetModel } from '../pet-model';
+import { petImage } from '../pet-catalog';
+import type { Party } from './party';
 import { BED, COINS, COUNTER, DOCK, GATE, ISLAND, PLATE, ROOM, SNACK, SWITCH, WALLS, gateOpen, isDocked, type Game, type Point, type Species } from './game';
 
 export type View = { resize: (w: number, h: number) => void; render: (state: Game, dt: number, reduced: boolean) => void; pick: (x: number, y: number, elevated: boolean) => Point | null; dispose: () => void };
-export async function createScene(canvas: HTMLCanvasElement, zh: boolean, mapOnly: boolean, signal: AbortSignal): Promise<View> {
+export async function createScene(canvas: HTMLCanvasElement, zh: boolean, mapOnly: boolean, signal: AbortSignal, party: Party): Promise<View> {
   if (signal.aborted) throw new DOMException('Cancelled', 'AbortError');
-  if (mapOnly) return createMap(canvas, zh);
+  if (mapOnly) return createMap(canvas, zh, party);
   const context = canvas.getContext('webgl2', { alpha: false, antialias: true });
-  if (!context) return createMap(canvas, zh);
+  if (!context) return createMap(canvas, zh, party);
   const renderer = new THREE.WebGLRenderer({ canvas, context, antialias: true });
   renderer.setClearColor(0xf4e9d8); renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.1;
@@ -82,22 +83,14 @@ export async function createScene(canvas: HTMLCanvasElement, zh: boolean, mapOnl
   const ringMat = own(new THREE.MeshBasicMaterial({ color: 0x61bda1, side: THREE.DoubleSide, transparent: true, opacity: .9 }));
   const ring = new THREE.Mesh(own(new THREE.RingGeometry(.45, .5, 40)), ringMat); ring.rotation.x = -Math.PI / 2; scene.add(ring);
   const actors = { cat: new THREE.Group(), dog: new THREE.Group() }; scene.add(actors.cat, actors.dog);
-  const petModels: Partial<Record<Species, Awaited<ReturnType<typeof createPetModel>>>> = {};
-  let disposed = false;
+  const portraits: Partial<Record<Species, THREE.Sprite>> = {};
   const previous = { cat: { x: -10, z: -10 }, dog: { x: -10, z: -10 } };
-  const modelLoads = (['cat', 'dog'] as const).map(async species => {
-    try {
-      const model = await createPetModel(species);
-      if (disposed || signal.aborted) { model.dispose(); return; }
-      petModels[species] = model; const scale = new THREE.Group(); scale.scale.setScalar(.4); scale.add(model.root); actors[species].add(scale);
-    } catch {
-      if (disposed || signal.aborted) return;
-      const texture = own(new THREE.TextureLoader().load(`${process.env.NEXT_PUBLIC_BASE_PATH || ''}/models/pets/${species}.webp`)); texture.colorSpace = THREE.SRGBColorSpace;
-      const portrait = new THREE.Sprite(own(new THREE.SpriteMaterial({ map: texture }))); portrait.scale.set(1.05, 1.05, 1); portrait.position.y = .55; actors[species].add(portrait);
-    }
-  });
-  // Scenery can render and input stays responsive while the two actors arrive.
-  void Promise.allSettled(modelLoads);
+  for (const species of ['cat', 'dog'] as const) {
+    const texture = own(new THREE.TextureLoader().load(petImage(species, party[species].appearance)));
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const portrait = new THREE.Sprite(own(new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, toneMapped: false })));
+    portrait.scale.set(1.2, 1.2, 1); portrait.position.y = .6; actors[species].add(portrait); portraits[species] = portrait;
+  }
   const raycaster = new THREE.Raycaster(), plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hit = new THREE.Vector3();
   function resize(w: number, h: number) {
     renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5)); renderer.setSize(w, h, false);
@@ -116,7 +109,8 @@ export async function createScene(canvas: HTMLCanvasElement, zh: boolean, mapOnl
       for (const species of ['cat', 'dog'] as const) {
         const p = s.pets[species], moving = Math.hypot(p.x - previous[species].x, p.z - previous[species].z) > .002;
         const actor = actors[species]; actor.position.set(p.x, p.y, p.z); actor.rotation.y = p.heading;
-        petModels[species]?.update(s.won ? 'happy' : moving ? 'walk' : 'idle', s.elapsed, dt, reduced);
+        const portrait = portraits[species];
+        if (portrait) portrait.position.y = .6 + (!reduced && (moving || s.won) ? Math.abs(Math.sin(s.elapsed * 10)) * .065 : 0);
         previous[species] = { x: p.x, z: p.z };
       }
       const p = s.pets[s.active]; ring.position.set(p.x, p.y + .04, p.z); renderer.render(scene, camera);
@@ -125,17 +119,17 @@ export async function createScene(canvas: HTMLCanvasElement, zh: boolean, mapOnl
       raycaster.setFromCamera(new THREE.Vector2(x * 2 - 1, 1 - y * 2), camera); plane.constant = elevated ? -1.1 : 0;
       return raycaster.ray.intersectPlane(plane, hit) ? { x: hit.x, z: hit.z } : null;
     },
-    dispose() { disposed = true; Object.values(petModels).forEach(p => p.dispose()); resources.forEach(r => r.dispose()); sun.shadow.map?.dispose(); renderer.dispose(); renderer.forceContextLoss(); },
+    dispose() { resources.forEach(r => r.dispose()); sun.shadow.map?.dispose(); renderer.dispose(); renderer.forceContextLoss(); },
   };
 }
 
 /** A playable low-power map, also available when WebGL is unavailable. */
-function createMap(canvas: HTMLCanvasElement, zh: boolean): View {
+function createMap(canvas: HTMLCanvasElement, zh: boolean, party: Party): View {
   const context = canvas.getContext('2d'); if (!context) throw new Error('Canvas unavailable');
   const ctx: CanvasRenderingContext2D = context;
   let width = 1, height = 1, unit = 1, left = 0, top = 0;
   const imgs = { cat: new Image(), dog: new Image() };
-  for (const species of ['cat', 'dog'] as const) imgs[species].src = `${process.env.NEXT_PUBLIC_BASE_PATH || ''}/models/pets/${species}.webp`;
+  for (const species of ['cat', 'dog'] as const) imgs[species].src = petImage(species, party[species].appearance);
   const rect = (r: { x: number; z: number; w: number; h: number }, color: string) => { ctx.fillStyle = color; ctx.fillRect(left + r.x * unit, top + r.z * unit, r.w * unit, r.h * unit); };
   function circle(p: Point, radius: number, color: string) { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(left + p.x * unit, top + p.z * unit, radius * unit, 0, Math.PI * 2); ctx.fill(); }
   function text(value: string, p: Point) { ctx.fillStyle = '#284e43'; ctx.font = `600 ${Math.max(9, unit * .28)}px system-ui`; ctx.textAlign = 'center'; ctx.fillText(value, left + p.x * unit, top + p.z * unit); }

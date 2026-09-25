@@ -394,7 +394,7 @@ export default function Home() {
           {hasFilters && <button type="button" className="clear-filters" onClick={() => { setStatusFilter("all"); setCategoryFilter("all"); }}><X size={14} />{t.clearFilters}</button>}
         </div>}
 
-        {view === "adventure" ? <SoloAdventure spaceId={spaceId} zh={locale==="zh-CN"}/> : view === "pet" ? (spaceId ? <SharedPet key={spaceId} spaceId={spaceId} zh={locale==="zh-CN"}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起养宠物。":"Sign in to raise your pet together."}</p>) : view === "life" ? (spaceId ? <LifeDashboard spaceId={spaceId} zh={locale==="zh-CN"} wishes={wishes} onWish={wish=>setExperienceId(wish.id)} onBackground={memoryBackground}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起记录纪念日和回忆。":"Sign in to share your dates and memories."}</p>) : view === "map" ? <div className="map-view">
+        {view === "adventure" ? <SoloAdventure spaceId={spaceId} zh={locale==="zh-CN"} onPets={()=>setView("pet")}/> : view === "pet" ? (spaceId ? <SharedPet key={spaceId} spaceId={spaceId} zh={locale==="zh-CN"}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起养宠物。":"Sign in to raise your pet together."}</p>) : view === "life" ? (spaceId ? <LifeDashboard spaceId={spaceId} zh={locale==="zh-CN"} wishes={wishes} onWish={wish=>setExperienceId(wish.id)} onBackground={memoryBackground}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起记录纪念日和回忆。":"Sign in to share your dates and memories."}</p>) : view === "map" ? <div className="map-view">
           <div className="map-heading"><h1>{t.mapTitle}</h1><p>{mapWish ? mapSource : t.mapEmpty}</p></div>
           <form className="map-search" onSubmit={(event) => { event.preventDefault(); setMapSearchQuery(getMapQuery(mapSearch)); }}>
             <Search size={17} aria-hidden="true" />
