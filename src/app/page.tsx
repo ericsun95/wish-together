@@ -1,6 +1,9 @@
 "use client";
 import { PlaceSearch } from "@/components/place-search";
 import "./wish-editor.css";
+import "./mobile.css";
+import { InstallApp } from "@/components/install-app";
+import { coordinates, readDrafts, writeDraft, type Coordinates, type WishDraft } from "@/lib/wish-drafts";
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
@@ -21,7 +24,7 @@ const SoloAdventure = dynamic(() => import("@/components/adventure/solo-adventur
 
 type ChecklistItem = { id: string; label: string; completed: boolean; position: number };
 type WishStatus = "wanted" | "planned" | "done";
-type Wish = { id: string; title: string; note: string; url: string; address: string; category: string; status: WishStatus; plannedDate: string; completionNote: string; createdAt: string; checklist: ChecklistItem[] };
+type Wish = { location?: Coordinates | null; deletedAt?: string | null; id: string; title: string; note: string; url: string; address: string; category: string; status: WishStatus; plannedDate: string; completionNote: string; createdAt: string; checklist: ChecklistItem[] };
 type View = "wishes" | "done" | "dashboard" | "map" | "life" | "pet" | "adventure";
 
 const WISHES_KEY = "wish-together:wishes";
@@ -49,6 +52,8 @@ function readWishes(key: string): Wish[] {
       ...wish,
       url: typeof wish.url === "string" && validUrl(wish.url) ? wish.url : "",
       address: typeof wish.address === "string" ? wish.address : "",
+      location: coordinates(wish.location),
+      deletedAt: typeof wish.deletedAt === "string" ? wish.deletedAt : null,
       category: typeof wish.category === "string" ? wish.category : "",
       status: wish.status === "planned" || wish.status === "done" ? wish.status : wish.done === true ? "done" : "wanted",
       plannedDate: typeof wish.plannedDate === "string" ? wish.plannedDate : "",
@@ -63,7 +68,15 @@ function readWishes(key: string): Wish[] {
 
 export default function Home() {
   const [locale, setLocale] = useState<Locale>("zh-CN");
-  const [wishes, setWishes] = useState<Wish[]>([]);
+  const [allWishes, setWishes] = useState<Wish[]>([]);
+  const wishes = allWishes.filter(wish => !wish.deletedAt);
+  const removedWishes = allWishes.filter(wish => wish.deletedAt);
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [undoId, setUndoId] = useState<string | null>(null);
+  const [removeBusy, setRemoveBusy] = useState<string | null>(null);
+  const removeLock = useRef(false);
+  const wishMutation = useRef(0);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [spaceId, setSpaceId] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [experienceId, setExperienceId] = useState<string | null>(null);
@@ -85,6 +98,12 @@ export default function Home() {
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
   const [address, setAddress] = useState("");
+  const [location, setLocation] = useState<Coordinates | null>(null);
+  const [draftUser, setDraftUser] = useState<string | null>(supabase ? null : "local");
+  const draftKey = draftUser && (!supabase || spaceId) ? `wish-together:drafts:v1:${draftUser}:${spaceId || "local"}` : null;
+  const [editorScope, setEditorScope] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, WishDraft>>({});
+  const [draftError, setDraftError] = useState(false);
   const [category, setCategory] = useState("");
   const [status, setStatus] = useState<WishStatus>("wanted");
   const [plannedDate, setPlannedDate] = useState("");
@@ -108,16 +127,18 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (ready && !supabase) localStorage.setItem(WISHES_KEY, JSON.stringify(wishes));
-  }, [ready, wishes]);
+    if (ready && !supabase) localStorage.setItem(WISHES_KEY, JSON.stringify(allWishes));
+  }, [ready, allWishes]);
 
   useEffect(() => {
     if (!supabase || !spaceId) return;
     const client = supabase;
     let active = true;
     async function loadWishes() {
+      if (removeLock.current || wishSaveLock.current) return;
+      const revision = wishMutation.current;
       const { data: rows, error: wishError } = await client.from("wishes")
-        .select("id, title, note, url, address, category, status, planned_date, completed_note, created_at").eq("space_id", spaceId).order("created_at", { ascending: false });
+        .select("id, title, note, url, address, category, status, planned_date, completed_note, created_at, latitude, longitude, deleted_at").eq("space_id", spaceId).order("created_at", { ascending: false });
       if (!active) return;
       if (wishError || !rows) return setError(messages[locale].wishLoadError);
       const ids = rows.map((row) => row.id);
@@ -126,8 +147,9 @@ export default function Home() {
         : { data: [], error: null };
       if (!active) return;
       if (itemError) return setError(messages[locale].wishLoadError);
+      if (revision !== wishMutation.current || removeLock.current || wishSaveLock.current) return;
       setWishes(rows.map((row) => ({
-        id: row.id, title: row.title, note: row.note, url: row.url ?? "", address: row.address ?? "", category: row.category ?? "",
+        id: row.id, location: coordinates(row), deletedAt: row.deleted_at, title: row.title, note: row.note, url: row.url ?? "", address: row.address ?? "", category: row.category ?? "",
         status: row.status as WishStatus, plannedDate: row.planned_date ?? "", completionNote: row.completed_note ?? "", createdAt: row.created_at,
         checklist: (items ?? []).filter((item) => item.wish_id === row.id),
       })));
@@ -164,13 +186,14 @@ export default function Home() {
   }, [spaceId]);
 
   const changeSpace = useCallback((nextSpaceId: string | null) => {
+    setAdding(false); setUndoId(null); setTrashOpen(false);
     setSpaceId(nextSpaceId);
     setExperienceId(null);
     setPhotoDraft(null);
     setBackgroundPhoto(null);
     setAppearanceOpen(false);
     if (!supabase) setWishes(readWishes(WISHES_KEY));
-    else if (!nextSpaceId) setWishes([]);
+    else setWishes([]);
   }, []);
 
   function changeLocale(next: Locale) {
@@ -201,17 +224,59 @@ export default function Home() {
   const [wishSaving, setWishSaving] = useState(false);
   const wishSaveLock = useRef(false);
 
+  useEffect(() => {
+    if (!supabase) return;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setDraftUser(session?.user.id ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+  useEffect(() => {
+    if (!adding) setDrafts(draftKey ? readDrafts(localStorage, draftKey) : {});
+  }, [draftKey, adding]);
+  useEffect(() => {
+    if (!adding || !draftKey || editorScope !== draftKey) return;
+    try {
+      const content = editingId || title || note || url || address || category || plannedDate || completionNote || checklistDraft.length || status !== "wanted";
+      writeDraft(localStorage, draftKey, editingId || "new", content ? { editingId, title, note, url, address, category, status, plannedDate, completionNote, location, checklist: checklistDraft } : null);
+      setDraftError(false);
+    } catch { setDraftError(true); }
+  }, [adding, draftKey, editorScope, editingId, title, note, url, address, category, status, plannedDate, completionNote, location, checklistDraft]);
+  useEffect(() => {
+    if (adding && editorScope !== draftKey) setAdding(false);
+  }, [draftKey, editorScope, adding]);
+  useEffect(() => {
+    if (!undoId) return;
+    const timer = setTimeout(() => setUndoId(null), 12000);
+    return () => clearTimeout(timer);
+  }, [undoId]);
+  function applyDraft(draft: WishDraft) {
+    setEditingId(draft.editingId); setTitle(draft.title); setNote(draft.note); setUrl(draft.url);
+    setAddress(draft.address); setLocation(draft.location); setCategory(draft.category); setStatus(draft.status);
+    setPlannedDate(draft.plannedDate); setCompletionNote(draft.completionNote); setChecklistDraft(draft.checklist);
+    setEditorScope(draftKey); setError(""); setAdding(true);
+  }
+  function finishEditor() {
+    if (draftKey) { try { writeDraft(localStorage, draftKey, editingId || "new", null); } catch { /* Keep the recoverable draft if storage is unavailable. */ } }
+    resetEditor();
+  }
   function resetEditor() {
-    setTitle(""); setUrl(""); setAddress(""); setCategory(""); setNote(""); setStatus("wanted"); setPlannedDate(""); setCompletionNote("");
+    setLocation(null); setTitle(""); setUrl(""); setAddress(""); setCategory(""); setNote(""); setStatus("wanted"); setPlannedDate(""); setCompletionNote("");
     setChecklistDraft([]); setEditingId(null); setError(""); setAdding(false);
   }
 
   function openNewWish() {
+    const saved = draftKey ? readDrafts(localStorage, draftKey).new : null;
+    if (saved) { applyDraft(saved); return; }
     resetEditor();
+    setEditorScope(draftKey);
     setAdding(true);
   }
 
   function openEditWish(wish: Wish) {
+    const saved = draftKey ? readDrafts(localStorage, draftKey)[wish.id] : null;
+    if (saved) { applyDraft(saved); return; }
+    setEditorScope(draftKey); setLocation(wish.location ?? null);
     setTitle(wish.title); setUrl(wish.url); setAddress(wish.address); setCategory(wish.category); setNote(wish.note);
     setStatus(wish.status); setPlannedDate(wish.plannedDate); setCompletionNote(wish.completionNote);
     setChecklistDraft(wish.checklist.map((item) => ({ ...item })));
@@ -278,8 +343,10 @@ export default function Home() {
     if (wishSaveLock.current) return;
     if (url.trim() && !validUrl(url.trim())) return setError(t.urlError);
     if (!title.trim()) return setError(t.titleError);
+    wishMutation.current++;
     wishSaveLock.current = true; setWishSaving(true); setError("");
     try {
+    const saveScope = spaceId;
     const draft = checklistDraft.map((item) => ({ ...item, label: item.label.trim() })).filter((item) => item.label);
     let newWish: Wish;
     if (supabase && spaceId) {
@@ -288,7 +355,7 @@ export default function Home() {
       if (editingId) {
         const { error: updateError } = await supabase.from("wishes").update({
           title: title.trim(), note: note.trim(), url: url.trim() || null,
-          address: address.trim(), category: category.trim(), status, planned_date: status === "planned" ? plannedDate || null : null,
+          address: address.trim(), latitude: location?.latitude ?? null, longitude: location?.longitude ?? null, category: category.trim(), status, planned_date: status === "planned" ? plannedDate || null : null,
           completed_at: status === "done" ? new Date().toISOString() : null, completed_note: status === "done" ? completionNote.trim() : "",
         }).eq("id", editingId);
         if (updateError) return setError(t.wishSaveError);
@@ -296,17 +363,18 @@ export default function Home() {
         if (removeError) return setError(t.wishSaveError);
         const items = draft.map((item, position) => ({ id: item.id, wish_id: editingId, space_id: spaceId, label: item.label, completed: item.completed, position }));
         if (items.length && (await supabase.from("wish_checklist_items").insert(items)).error) return setError(t.wishSaveError);
+        if (activeSpace.current !== saveScope) return;
         setWishes((current) => current.map((wish) => wish.id === editingId ? {
-          ...wish, title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), category: category.trim(), status,
+          ...wish, location, title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), category: category.trim(), status,
           plannedDate: status === "planned" ? plannedDate : "", completionNote: status === "done" ? completionNote.trim() : "",
           checklist: draft.map((item, position) => ({ ...item, position })),
         } : wish));
-        resetEditor();
+        finishEditor();
         return;
       }
       const { data, error: insertError } = await supabase.from("wishes").insert({
         space_id: spaceId, created_by: user.id, title: title.trim(), note: note.trim(),
-        url: url.trim() || null, address: address.trim(), category: category.trim(), status,
+        url: url.trim() || null, latitude: location?.latitude ?? null, longitude: location?.longitude ?? null, address: address.trim(), category: category.trim(), status,
         planned_date: status === "planned" ? plannedDate || null : null, completed_at: status === "done" ? new Date().toISOString() : null,
         completed_note: status === "done" ? completionNote.trim() : "",
       }).select("id").single();
@@ -316,22 +384,24 @@ export default function Home() {
         const { error: itemError } = await supabase.from("wish_checklist_items").insert(items);
         if (itemError) { await supabase.from("wishes").delete().eq("id", data.id); return setError(t.wishSaveError); }
       }
-      newWish = { id: data.id, title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), category: category.trim(), status, createdAt: new Date().toISOString(),
+      newWish = { location, id: data.id, title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), category: category.trim(), status, createdAt: new Date().toISOString(),
         plannedDate: status === "planned" ? plannedDate : "", completionNote: status === "done" ? completionNote.trim() : "",
         checklist: draft.map((item, position) => ({ ...item, position })) };
     } else {
       if (editingId) {
-        setWishes((current) => current.map((wish) => wish.id === editingId ? { ...wish, title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), category: category.trim(), status, plannedDate: status === "planned" ? plannedDate : "", completionNote: status === "done" ? completionNote.trim() : "", checklist: draft } : wish));
-        resetEditor();
+        if (activeSpace.current !== saveScope) return;
+        setWishes((current) => current.map((wish) => wish.id === editingId ? { ...wish, location, title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), category: category.trim(), status, plannedDate: status === "planned" ? plannedDate : "", completionNote: status === "done" ? completionNote.trim() : "", checklist: draft } : wish));
+        finishEditor();
         return;
       }
-      newWish = { id: crypto.randomUUID(), title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), category: category.trim(), status, plannedDate: status === "planned" ? plannedDate : "", completionNote: status === "done" ? completionNote.trim() : "", createdAt: new Date().toISOString(), checklist: draft };
+      newWish = { location, id: crypto.randomUUID(), title: title.trim(), note: note.trim(), url: url.trim(), address: address.trim(), category: category.trim(), status, plannedDate: status === "planned" ? plannedDate : "", completionNote: status === "done" ? completionNote.trim() : "", createdAt: new Date().toISOString(), checklist: draft };
     }
+    if (activeSpace.current !== saveScope) return;
     setWishes((current) => [newWish, ...current]);
-    resetEditor();
+    finishEditor();
     setView("wishes");
     } catch { setError(t.wishSaveError); }
-    finally { wishSaveLock.current = false; setWishSaving(false); }
+    finally { wishMutation.current++; wishSaveLock.current = false; setWishSaving(false); }
   }
 
   async function toggleWish(wish: Wish) {
@@ -349,10 +419,23 @@ export default function Home() {
     setWishes((all) => all.map((wish) => wish.id === wishId ? { ...wish, checklist: wish.checklist.map((entry) => entry.id === item.id ? { ...entry, completed: !entry.completed } : entry) } : wish));
   }
 
-  async function deleteWish(id: string) {
-    if (supabase) { const {error} = await supabase.from("wishes").delete().eq("id", id); if(error){setError(t.wishSaveError);return;} }
-    setWishes((all) => all.filter((item) => item.id !== id));
+  async function setRemoved(id: string, removed: boolean) {
+    if (removeLock.current) return;
+    wishMutation.current++;
+    removeLock.current = true; setRemoveBusy(id); setError("");
+    const scope = spaceId, deletedAt = removed ? new Date().toISOString() : null;
+    try {
+      if (supabase) {
+        const { data, error } = await supabase.from("wishes").update({ deleted_at: deletedAt }).eq("id", id).eq("space_id", scope).select("id").single();
+        if (error || !data) throw error || new Error("Wish unavailable");
+      }
+      if (activeSpace.current !== scope) return;
+      setWishes(all => all.map(w => w.id === id ? { ...w, deletedAt } : w));
+      setUndoId(removed ? id : null);
+    } catch { if (activeSpace.current === scope) setError(t.wishSaveError); }
+    finally { wishMutation.current++; removeLock.current = false; setRemoveBusy(null); }
   }
+  async function deleteWish(id: string) { await setRemoved(id, true); }
 
   return (
     <SpaceGate theme={theme} backgroundPhoto={backgroundPhoto} locale={locale} onLocaleChange={changeLocale} onSpaceChange={changeSpace} wishes={wishes} onWish={wish => setExperienceId(wish.id)}>
@@ -371,7 +454,8 @@ export default function Home() {
       <section className="workspace">
         {spaceId && view !== "life" && view !== "adventure" && <DateAndRandom spaceId={spaceId} zh={locale==="zh-CN"} wishes={wishes} onWish={wish=>setExperienceId(wish.id)}/>}
         <div className="section-head">
-          <div className="tabs" role="tablist">
+          <button type="button" className="mobile-menu secondary" aria-expanded={moreOpen} onClick={() => setMoreOpen(v => !v)}>{locale === "zh-CN" ? "全部栏目" : "All sections"}</button>
+          <div className={`tabs ${moreOpen ? "mobile-expanded" : ""}`} role="tablist">
             <button role="tab" aria-selected={view === "wishes"} onClick={() => { setView("wishes"); setStatusFilter("all"); }}>{t.wishes}<span>{wishes.filter((w) => w.status !== "done").length}</span></button>
             <button role="tab" aria-selected={view === "done"} onClick={() => { setView("done"); setStatusFilter("all"); }}>{t.done}<span>{wishes.filter((w) => w.status === "done").length}</span></button>
             <button role="tab" aria-selected={view === "dashboard"} onClick={() => setView("dashboard")}><LayoutDashboard size={15} />{t.dashboard}</button>
@@ -383,6 +467,7 @@ export default function Home() {
           <button className="primary" type="button" onClick={openNewWish}><Plus size={18} />{t.add}</button>
         </div>
 
+        {!adding && Object.entries(drafts).some(([id]) => id === "new" || wishes.some(w => w.id === id)) && <div className="draft-banner"><span>{locale === "zh-CN" ? "有未完成的草稿 · 仅此设备" : "Unfinished drafts · this device"}</span>{Object.entries(drafts).filter(([id]) => id === "new" || wishes.some(w => w.id === id)).map(([id, draft]) => <button type="button" key={id} onClick={() => applyDraft(draft)}>{locale === "zh-CN" ? "继续：" : "Continue: "}{draft.title || (locale === "zh-CN" ? "新心愿" : "New wish")}</button>)}</div>}
         {(view === "wishes" || view === "done") && wishes.length > 0 && <div className="filter-bar" aria-label={t.filters}>
           <Filter size={16} aria-hidden="true" />
           {view === "wishes" && <label><span>{t.status}</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "all" | WishStatus)}>
@@ -397,7 +482,7 @@ export default function Home() {
           {hasFilters && <button type="button" className="clear-filters" onClick={() => { setStatusFilter("all"); setCategoryFilter("all"); }}><X size={14} />{t.clearFilters}</button>}
         </div>}
 
-        {view === "adventure" ? <SoloAdventure spaceId={spaceId} zh={locale==="zh-CN"} onPets={()=>setView("pet")}/> : view === "pet" ? (spaceId ? <SharedPet key={spaceId} spaceId={spaceId} zh={locale==="zh-CN"}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起养宠物。":"Sign in to raise your pet together."}</p>) : view === "life" ? (spaceId ? <LifeDashboard spaceId={spaceId} zh={locale==="zh-CN"} wishes={wishes} onWish={wish=>setExperienceId(wish.id)} onBackground={memoryBackground}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起记录纪念日和回忆。":"Sign in to share your dates and memories."}</p>) : view === "map" ? <TaskMap wishes={wishes} zh={locale==="zh-CN"} onDetails={spaceId?setExperienceId:undefined}/> : view === "dashboard" ? <div className="dashboard-view">
+        {view === "adventure" ? <SoloAdventure spaceId={spaceId} zh={locale==="zh-CN"} onPets={()=>setView("pet")}/> : view === "pet" ? (spaceId ? <SharedPet key={spaceId} spaceId={spaceId} zh={locale==="zh-CN"}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起养宠物。":"Sign in to raise your pet together."}</p>) : view === "life" ? (spaceId ? <LifeDashboard spaceId={spaceId} zh={locale==="zh-CN"} wishes={wishes} onWish={wish=>setExperienceId(wish.id)} onBackground={memoryBackground}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起记录纪念日和回忆。":"Sign in to share your dates and memories."}</p>) : view === "map" ? <TaskMap onEdit={id => { const wish = wishes.find(w => w.id === id); if (wish) openEditWish(wish); }} wishes={wishes} zh={locale==="zh-CN"} onDetails={spaceId?setExperienceId:undefined}/> : view === "dashboard" ? <div className="dashboard-view">
           <div className="metric-grid">
             <div><strong>{wishes.length}</strong><span>{t.totalWishes}</span></div>
             <div><strong>{wishes.filter((wish) => wish.status === "wanted").length}</strong><span>{t.wantedStatus}</span></div>
@@ -440,17 +525,20 @@ export default function Home() {
                 <div className="row-actions">
                   <button type="button" className="icon-button" title={t.edit} aria-label={t.edit} onClick={() => openEditWish(wish)}><Pencil size={17} /></button>
                   <button type="button" className="icon-button" title={wish.status === "done" ? t.undo : t.markDone} aria-label={wish.status === "done" ? t.undo : t.markDone} onClick={() => void toggleWish(wish)}><Check size={18} /></button>
-                  <button type="button" className="icon-button danger" title={t.delete} aria-label={t.delete} onClick={() => void deleteWish(wish.id)}><Trash2 size={17} /></button>
+                  <button type="button" className="icon-button danger" title={t.delete} aria-label={t.delete} disabled={!!removeBusy} onClick={() => void deleteWish(wish.id)}><Trash2 size={17} /></button>
                 </div>
               </article>
             ))}
           </div>
         )}
         {error && !adding && <p className="form-error" role="alert">{error}</p>}
+        <div className="wish-utilities"><button className="secondary" type="button" aria-expanded={trashOpen} onClick={() => setTrashOpen(v => !v)}><Trash2 size={15}/>{locale === "zh-CN" ? "已删除心愿" : "Removed wishes"} ({removedWishes.length})</button><InstallApp zh={locale === "zh-CN"}/></div>
+        {trashOpen && <section className="recovery-panel" aria-label={locale === "zh-CN" ? "恢复心愿" : "Restore wishes"}><p>{locale === "zh-CN" ? "删除的心愿和关联记录会保留，可随时恢复。" : "Removed wishes and their records are kept here for recovery."}</p>{!removedWishes.length && <p>{locale === "zh-CN" ? "没有已删除的心愿" : "No removed wishes"}</p>}{removedWishes.map(w => <div key={w.id}><span>{w.title}</span><button className="secondary" disabled={!!removeBusy} onClick={() => void setRemoved(w.id, false)}>{locale === "zh-CN" ? "恢复" : "Restore"}</button></div>)}</section>}
         <p className="storage-note">{supabase ? t.sharedStorage : t.localOnly}</p>
       </section>
 
       {spaceId && experienceId && wishes.find(w=>w.id===experienceId) && <WishExperience key={`${spaceId}:${experienceId}`} spaceId={spaceId} wish={wishes.find(w=>w.id===experienceId)!} wishes={wishes} zh={locale==="zh-CN"} onClose={()=>setExperienceId(null)} onBackground={memoryBackground}/>}
+      {undoId && <div className="undo-toast" role="status"><span>{locale === "zh-CN" ? "心愿已移到已删除列表" : "Wish moved to removed list"}</span><button disabled={!!removeBusy} onClick={() => void setRemoved(undoId, false)}>{locale === "zh-CN" ? "撤销" : "Undo"}</button></div>}
       {adding && <div className="dialog-backdrop">
         <div className="dialog wish-editor-dialog" onKeyDown={event => {
           if (event.key !== "Tab") return;
@@ -462,9 +550,9 @@ export default function Home() {
           <div className="dialog-head"><h2 id="dialog-title">{editingId ? t.edit : t.add}</h2><button type="button" className="icon-button" aria-label={t.cancel} disabled={wishSaving} onClick={resetEditor}><X size={20} /></button></div>
           <form onSubmit={saveWish} aria-busy={wishSaving}>
             <fieldset className="wish-editor-body" disabled={wishSaving}>
-            <p className="wish-editor-intro">{locale === "zh-CN" ? "先记下想做的事，地点和计划可以慢慢补充。" : "Start with your wish. Add a place and a plan whenever you’re ready."}</p>
+            <p className="draft-state" role="status">{draftError ? (locale === "zh-CN" ? "设备存储不可用，草稿暂未保存" : "Device storage unavailable. Draft not saved.") : draftKey ? (locale === "zh-CN" ? "草稿自动保存在此设备，关闭后可继续编辑" : "Draft saved on this device. Close and continue later.") : (locale === "zh-CN" ? "正在准备草稿保存…" : "Preparing draft storage…")}</p><p className="wish-editor-intro">{locale === "zh-CN" ? "先记下想做的事，地点和计划可以慢慢补充。" : "Start with your wish. Add a place and a plan whenever you’re ready."}</p>
             <label>{t.title}<input autoFocus required value={title} onChange={(e) => { setTitle(e.target.value); setError(""); }} /></label>
-            <PlaceSearch value={address} onChange={setAddress} zh={locale === "zh-CN"}/>
+            <PlaceSearch value={address} onChange={value => { setAddress(value); setLocation(null); }} onSelect={setLocation} zh={locale === "zh-CN"}/>
             <label>{t.category} <span className="optional-label">{t.optional}</span><input list="wish-categories" value={category} onChange={(e) => setCategory(e.target.value)} placeholder={locale === "zh-CN" ? "例如：旅行、美食、约会" : "Travel, food, date night…"}/><datalist id="wish-categories">{categoryNames.map(name => <option key={name} value={name}/>)}</datalist></label>
             <fieldset className="status-editor"><legend>{t.status}</legend><div className="segmented-control">
               {(["wanted", "planned", "done"] as WishStatus[]).map((option) => <button type="button" key={option} aria-pressed={status === option} onClick={() => setStatus(option)}>{option === "wanted" ? t.wantedStatus : option === "planned" ? t.plannedStatus : t.doneStatus}</button>)}
@@ -484,7 +572,7 @@ export default function Home() {
             </details>
             {error && <p className="form-error" role="alert">{error}</p>}
             </fieldset>
-            <div className="dialog-actions"><button type="button" className="secondary" disabled={wishSaving} onClick={resetEditor}>{t.cancel}</button><button type="submit" className="primary" disabled={wishSaving}>{wishSaving ? (locale === "zh-CN" ? "保存中…" : "Saving…") : editingId ? t.saveChanges : t.save}</button></div>
+            <div className="dialog-actions"><button type="button" className="secondary" disabled={wishSaving} onClick={finishEditor}>{locale === "zh-CN" ? "放弃草稿" : "Discard draft"}</button><button type="button" className="secondary" disabled={wishSaving} onClick={resetEditor}>{locale === "zh-CN" ? "稍后继续" : "Keep draft"}</button><button type="submit" className="primary" disabled={wishSaving}>{wishSaving ? (locale === "zh-CN" ? "保存中…" : "Saving…") : editingId ? t.saveChanges : t.save}</button></div>
           </form>
         </div>
       </div>}

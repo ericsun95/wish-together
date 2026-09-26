@@ -10,10 +10,12 @@
     "test:db": "node scripts/test-database.mjs && node scripts/test-life.mjs",
     "test:room": "node scripts/test-pet-room.mjs",
     "test:adventure": "node scripts/test-adventure.mjs",
-    "test:life": "node scripts/test-life.mjs"
+    "test:life": "node scripts/test-life.mjs",
+    "test:wishes": "node scripts/test-wish-drafts.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
+    "leaflet": "1.9.4",
     "lucide-react": "^0.468.0",
     "next": "^15.5.0",
     "react": "^19.1.0",
@@ -22,6 +24,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
+    "@types/leaflet": "1.9.21",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

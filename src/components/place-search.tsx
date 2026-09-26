@@ -1,10 +1,11 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { Search, MapPin } from "lucide-react";
+import { coordinates, type Coordinates } from "@/lib/wish-drafts";
 import { getGoogleMapsUrl } from "@/lib/maps";
 
-type Place = { name: string; address: string };
-export function PlaceSearch({ value, onChange, zh }: { value: string; onChange: (value: string) => void; zh: boolean }) {
+type Place = { name: string; address: string; location: Coordinates | null };
+export function PlaceSearch({ value, onChange, zh, onSelect }: { value: string; onChange: (value: string) => void; zh: boolean; onSelect?: (location: Coordinates | null) => void }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Place[]>([]);
   const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle");
@@ -25,12 +26,12 @@ export function PlaceSearch({ value, onChange, zh }: { value: string; onChange: 
       if (!response.ok) throw new Error("Search unavailable");
       const data = await response.json();
       if (!Array.isArray(data.features)) throw new Error("Invalid response");
-      const places: Place[] = data.features.flatMap((feature: { properties?: Record<string, unknown> }) => {
+      const places: Place[] = data.features.flatMap((feature: { properties?: Record<string, unknown>; geometry?: { coordinates?: number[] } }) => {
         const p = feature?.properties;
         if (!p) return [];
         const parts = [p.name, [p.housenumber, p.street].filter(v => typeof v === "string").join(" "), p.city, p.state, p.country].filter((v): v is string => typeof v === "string" && !!v.trim());
         const address = [...new Set(parts)].join(", ");
-        return address ? [{ name: typeof p.name === "string" ? p.name : parts[0], address }] : [];
+        return address ? [{ name: typeof p.name === "string" ? p.name : parts[0], address, location: coordinates({ longitude: feature.geometry?.coordinates?.[0], latitude: feature.geometry?.coordinates?.[1] }) }] : [];
       });
       if (request.current !== controller) return;
       const unique = places.filter((place, index) => places.findIndex(p => p.address === place.address) === index);
@@ -49,7 +50,7 @@ export function PlaceSearch({ value, onChange, zh }: { value: string; onChange: 
     <div aria-live="polite">
       {state === "error" && <p className="place-search-hint">{zh ? "搜索暂时不可用，可以手动输入地址，或去 Google Maps 查找。" : "Search is unavailable. Enter the address manually or try Google Maps."}</p>}
       {state === "ready" && !results.length && <p className="place-search-hint">{zh ? "没有找到地点，试试加上城市名或手动输入。" : "No places found. Add a city name or enter the address manually."}</p>}
-      {!!results.length && <ul className="place-results">{results.map(place => <li key={place.address}><button type="button" onClick={() => { onChange(place.address); setResults([]); setState("idle"); }}><MapPin size={17}/><span><strong>{place.name}</strong><small>{place.address}</small></span><span>{zh ? "选择" : "Use"}</span></button></li>)}</ul>}
+      {!!results.length && <ul className="place-results">{results.map(place => <li key={place.address}><button type="button" onClick={() => { onChange(place.address); onSelect?.(place.location); setResults([]); setState("idle"); }}><MapPin size={17}/><span><strong>{place.name}</strong><small>{place.address}</small></span><span>{zh ? "选择" : "Use"}</span></button></li>)}</ul>}
     </div>
     <div className="place-search-credit"><span>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> · Photon</span>{(query.trim() || value.trim()) && <a href={getGoogleMapsUrl(query.trim() || value)} target="_blank" rel="noreferrer">Google Maps ↗</a>}</div>
   </div>;

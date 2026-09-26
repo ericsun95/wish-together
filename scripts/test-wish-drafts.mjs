@@ -1,0 +1,22 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import ts from "typescript";
+const source = fs.readFileSync(new URL("../src/lib/wish-drafts.ts", import.meta.url), "utf8");
+const js = ts.transpileModule(source, {compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+const {coordinates,readDrafts,writeDraft} = await import(`data:text/javascript;base64,${Buffer.from(js).toString("base64")}`);
+const entries = new Map();
+const storage = {getItem:key=>entries.get(key)||null,setItem:(key,value)=>entries.set(key,value)};
+const draft = {editingId:null,title:"Trip",note:"Remember",url:"",address:"Bridge",category:"Travel",status:"planned",plannedDate:"2026-10-01",completionNote:"",location:{latitude:37,longitude:-122},checklist:[{id:"c",label:"Tickets",completed:false,position:0}]};
+writeDraft(storage,"user-a:space-a","new",draft);
+writeDraft(storage,"user-a:space-a","wish-1",{...draft,editingId:"wish-1",title:"Edited"});
+assert.deepEqual(readDrafts(storage,"user-a:space-a").new,draft);
+assert.deepEqual(readDrafts(storage,"user-b:space-a"),{});
+assert.deepEqual(readDrafts(storage,"user-a:space-b"),{});
+writeDraft(storage,"user-a:space-a","new",null);
+assert.equal(readDrafts(storage,"user-a:space-a")["wish-1"].title,"Edited");
+assert.equal(readDrafts(storage,"user-a:space-a").new,undefined);
+for(const invalid of [null,{latitude:91,longitude:0},{latitude:0,longitude:181},{latitude:NaN,longitude:0},{latitude:null,longitude:null}])assert.equal(coordinates(invalid),null);
+assert.deepEqual(coordinates({latitude:0,longitude:0}),{latitude:0,longitude:0});
+for(const raw of ["{broken","null","[]",'{"new":{}}']){storage.setItem("bad",raw);assert.deepEqual(readDrafts(storage,"bad"),{});}
+assert.throws(()=>writeDraft({getItem:()=>null,setItem:()=>{throw Error("full")}},"key","new",draft));
+console.log("Drafts: round-trip, per-user/space isolation, independent edits, discard, corrupt storage and coordinates passed.");

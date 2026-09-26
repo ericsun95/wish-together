@@ -34,6 +34,7 @@ jobs:
       - run: pnpm test:room
       - run: pnpm test:adventure
       - run: pnpm test:db
+      - run: pnpm test:wishes
       - run: pnpm build
         env:
           GITHUB_PAGES: "true"

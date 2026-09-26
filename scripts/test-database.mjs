@@ -81,6 +81,19 @@ try {
   assert.equal((await db.query("select count(*)::int as count from public.checkins")).rows[0].count, 1);
   assert.equal((await db.query("select count(*)::int as count from public.wish_checklist_items")).rows[0].count, 1);
   await db.query("update public.wish_checklist_items set completed = true where wish_id = $1", [wishId]);
+  await db.query("update public.wishes set latitude = 37.8199, longitude = -122.4783, deleted_at = now() where id = $1", [wishId]);
+  assert.equal((await db.query("select count(*)::int as n from public.wishes where deleted_at is null")).rows[0].n, 0);
+  assert.equal((await db.query("select count(*)::int as n from public.wish_checklist_items where wish_id = $1", [wishId])).rows[0].n, 1, "Removal preserves checklist");
+  assert.equal((await db.query("select count(*)::int as n from public.checkins where wish_id = $1", [wishId])).rows[0].n, 1, "Removal preserves check-ins");
+  await rejects("update public.wishes set latitude = 91 where id = $1", [wishId]);
+  await rejects("update public.wishes set longitude = null where id = $1", [wishId]);
+  await as(outsider);
+  assert.equal((await db.query("update public.wishes set deleted_at = null where id = $1 returning id", [wishId])).rows.length, 0, "Outsider cannot restore");
+  await as(owner);
+  await db.query("update public.wishes set deleted_at = null where id = $1", [wishId]);
+  const recovered = (await db.query("select latitude, longitude, deleted_at from public.wishes where id = $1", [wishId])).rows[0];
+  assert.equal(recovered.latitude, 37.8199); assert.equal(recovered.longitude, -122.4783); assert.equal(recovered.deleted_at, null);
+
 
   await as(owner);
   await db.query("update public.space_members set display_name = 'Eric', avatar_url = 'https://example.com/avatar.jpg' where user_id = $1", [owner]);
