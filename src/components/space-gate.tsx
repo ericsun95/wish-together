@@ -74,7 +74,7 @@ export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange, bac
   const loadSpace = useCallback(async (userId: string) => {
     if (!supabase) return;
     const cacheKey=`wish-together:space:v1:${userId}`;
-    if(!navigator.onLine){try{const cached=JSON.parse(localStorage.getItem(cacheKey)||'null');if(cached&&typeof cached.id==='string'&&typeof cached.name==='string'&&['owner','partner'].includes(cached.role)){setSpace(cached);setSpaceUserId(userId);setSpaceReady(true);return;}}catch{}}
+    try{const cached=JSON.parse(localStorage.getItem(cacheKey)||'null');if(cached&&typeof cached.id==='string'&&typeof cached.name==='string'&&['owner','partner'].includes(cached.role)){setSpace(cached);setSpaceUserId(userId);setSpaceReady(true);if(!navigator.onLine)return;}}catch{}
     const { data: membership, error: membershipError } = await supabase
       .from("space_members").select("space_id, role").eq("user_id", userId).maybeSingle();
     if(currentUser.current!==userId)return;
