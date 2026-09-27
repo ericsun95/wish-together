@@ -20,3 +20,15 @@ assert.deepEqual(coordinates({latitude:0,longitude:0}),{latitude:0,longitude:0})
 for(const raw of ["{broken","null","[]",'{"new":{}}']){storage.setItem("bad",raw);assert.deepEqual(readDrafts(storage,"bad"),{});}
 assert.throws(()=>writeDraft({getItem:()=>null,setItem:()=>{throw Error("full")}},"key","new",draft));
 console.log("Drafts: round-trip, per-user/space isolation, independent edits, discard, corrupt storage and coordinates passed.");
+
+const quickSource = fs.readFileSync(new URL("../src/lib/quick-wish.ts", import.meta.url), "utf8");
+const quickJs = ts.transpileModule(quickSource, {compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+const {quickWish} = await import(`data:text/javascript;base64,${Buffer.from(quickJs).toString("base64")}`);
+assert.deepEqual(quickWish("  一起看海  ",""),{title:"一起看海",url:"",error:null});
+assert.deepEqual(quickWish("https://www.example.com/trip?q=beach",""),{title:"example.com",url:"https://www.example.com/trip?q=beach",error:null});
+assert.deepEqual(quickWish("", "https://example.com/a"),{title:"example.com",url:"https://example.com/a",error:null});
+assert.equal(quickWish("Dinner", "https://example.com").title,"Dinner");
+assert.equal(quickWish("  ", "").error,"empty");
+assert.equal(quickWish("https://", "").error,"url");
+assert.equal(quickWish("Dinner", "javascript:alert(1)").error,"url");
+console.log("Quick wishes: thought-only, link-only, optional title and invalid-link validation passed.");
