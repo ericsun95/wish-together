@@ -3,6 +3,7 @@ import { PlaceSearch } from "@/components/place-search";
 import "./wish-editor.css";
 import "./mobile.css";
 import "./relaxed.css";
+import { PersistentDisclosure, useDisclosurePreference } from "@/components/persistent-disclosure";
 import { quickWish } from "@/lib/quick-wish";
 import { InstallApp } from "@/components/install-app";
 import { coordinates, readDrafts, writeDraft, type Coordinates, type WishDraft } from "@/lib/wish-drafts";
@@ -78,7 +79,7 @@ export default function Home() {
   const [removeBusy, setRemoveBusy] = useState<string | null>(null);
   const removeLock = useRef(false);
   const wishMutation = useRef(0);
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useDisclosurePreference("navigation", true);
   const [completedName, setCompletedName] = useState("");
   useEffect(() => { if (!completedName) return; const timer = setTimeout(() => setCompletedName(""), 6000); return () => clearTimeout(timer); }, [completedName]);
   const [spaceId, setSpaceId] = useState<string | null>(null);
@@ -460,22 +461,22 @@ export default function Home() {
 
         <div className="section-head relaxed-nav">
           <div className="tabs" role="tablist" aria-label={locale === "zh-CN" ? "主要栏目" : "Main sections"}>
-            <button role="tab" aria-selected={view === "wishes"} onClick={() => { setView("wishes"); setMoreOpen(false); setStatusFilter("all"); }}>{locale === "zh-CN" ? "心愿" : "Wishes"}</button>
-            <button role="tab" aria-selected={view === "map"} onClick={() => { setView("map"); setMoreOpen(false); }}><Map size={15}/>{t.map}</button>
-            <button role="tab" aria-selected={view === "pet"} onClick={() => { setView("pet"); setMoreOpen(false); }}><PawPrint size={15}/>{locale === "zh-CN" ? "小窝" : "Pets"}</button>
+            <button role="tab" aria-selected={view === "wishes"} onClick={() => { setView("wishes");  setStatusFilter("all"); }}>{locale === "zh-CN" ? "心愿" : "Wishes"}</button>
+            <button role="tab" aria-selected={view === "map"} onClick={() => { setView("map");  }}><Map size={15}/>{t.map}</button>
+            <button role="tab" aria-selected={view === "pet"} onClick={() => { setView("pet");  }}><PawPrint size={15}/>{locale === "zh-CN" ? "小窝" : "Pets"}</button>
           </div>
-          <button type="button" className="secondary more-toggle" aria-expanded={moreOpen} aria-controls="extra-sections" onClick={() => setMoreOpen(v => !v)}>{locale === "zh-CN" ? "更多" : "More"}</button>
+          <button type="button" className="secondary more-toggle" aria-expanded={moreOpen} aria-controls="extra-sections" onClick={() => setMoreOpen(!moreOpen)}>{locale === "zh-CN" ? "更多" : "More"}</button>
           <button className="primary" type="button" onClick={openNewWish}><Plus size={18}/>{locale === "zh-CN" ? "记一个" : "Add a wish"}</button>
         </div>
         {moreOpen && <nav className="extra-sections" id="extra-sections" aria-label={locale === "zh-CN" ? "更多栏目" : "More sections"}>
-          {([['done', locale === "zh-CN" ? '做过的事' : 'Things we did'], ['life', locale === "zh-CN" ? '纪念日与相册' : 'Dates & memories'], ['adventure', locale === "zh-CN" ? '一起冒险' : 'Adventures'], ['dashboard', t.dashboard]] as [View,string][]).map(([target,label]) => <button type="button" key={target} aria-current={view === target ? 'page' : undefined} onClick={() => { setView(target); setStatusFilter('all'); setCategoryFilter('all'); setMoreOpen(false); }}>{label}</button>)}
-          <button type="button" onClick={() => { setTrashOpen(v => !v); setMoreOpen(false); }}>{locale === "zh-CN" ? "已删除心愿" : "Removed wishes"}</button><InstallApp zh={locale === "zh-CN"}/>
+          {([['done', locale === "zh-CN" ? '做过的事' : 'Things we did'], ['life', locale === "zh-CN" ? '纪念日与相册' : 'Dates & memories'], ['adventure', locale === "zh-CN" ? '一起冒险' : 'Adventures'], ['dashboard', t.dashboard]] as [View,string][]).map(([target,label]) => <button type="button" key={target} aria-current={view === target ? 'page' : undefined} onClick={() => { setView(target); setStatusFilter('all'); setCategoryFilter('all');  }}>{label}</button>)}
+          <button type="button" onClick={() => { setTrashOpen(v => !v);  }}>{locale === "zh-CN" ? "已删除心愿" : "Removed wishes"}</button><InstallApp zh={locale === "zh-CN"}/>
         </nav>}
         {!['wishes','map','pet'].includes(view) && <p className="current-section">{view === 'done' ? (locale === 'zh-CN' ? '做过的事，慢慢收藏。' : 'Things we did, memories to keep.') : view === 'life' ? (locale === 'zh-CN' ? '纪念日与相册' : 'Dates & memories') : view === 'adventure' ? (locale === 'zh-CN' ? '一起冒险' : 'Adventures') : t.dashboard}</p>}
         {completedName && <p className="completion-notice" role="status">{locale === "zh-CN" ? `我们做过啦 · ${completedName}。以后也可以补照片和感想。` : `We did it · ${completedName}. Add memories whenever you like.`}</p>}
 
         {!adding && Object.entries(drafts).some(([id]) => id === "new" || wishes.some(w => w.id === id)) && <div className="draft-banner"><span>{locale === "zh-CN" ? "有未完成的草稿 · 仅此设备" : "Unfinished drafts · this device"}</span>{Object.entries(drafts).filter(([id]) => id === "new" || wishes.some(w => w.id === id)).map(([id, draft]) => <button type="button" key={id} onClick={() => applyDraft(draft)}>{locale === "zh-CN" ? "继续：" : "Continue: "}{draft.title || (locale === "zh-CN" ? "新心愿" : "New wish")}</button>)}</div>}
-        {(view === "wishes" || view === "done") && wishes.length > 0 && <details className="optional-filters"><summary>{t.filters}{hasFilters ? (locale === "zh-CN" ? " · 已筛选" : " · Active") : ""}</summary><div className="filter-bar" aria-label={t.filters}>
+        {(view === "wishes" || view === "done") && wishes.length > 0 && <section className="optional-filters"><div className="filter-bar" aria-label={t.filters}>
           <Filter size={16} aria-hidden="true" />
           {view === "wishes" && <label><span>{t.status}</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "all" | WishStatus)}>
             <option value="all">{t.allStatuses}</option>
@@ -487,7 +488,7 @@ export default function Home() {
             {categoryNames.map((name) => <option key={name} value={name}>{name}</option>)}
           </select></label>}
           {hasFilters && <button type="button" className="clear-filters" onClick={() => { setStatusFilter("all"); setCategoryFilter("all"); }}><X size={14} />{t.clearFilters}</button>}
-        </div></details>}
+        </div></section>}
 
         {view === "adventure" ? <SoloAdventure spaceId={spaceId} zh={locale==="zh-CN"} onPets={()=>setView("pet")}/> : view === "pet" ? (spaceId ? <SharedPet key={spaceId} spaceId={spaceId} zh={locale==="zh-CN"}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起养宠物。":"Sign in to raise your pet together."}</p>) : view === "life" ? (spaceId ? <LifeDashboard spaceId={spaceId} zh={locale==="zh-CN"} wishes={wishes} onWish={wish=>setExperienceId(wish.id)} onBackground={memoryBackground}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起记录纪念日和回忆。":"Sign in to share your dates and memories."}</p>) : view === "map" ? <TaskMap onEdit={id => { const wish = wishes.find(w => w.id === id); if (wish) openEditWish(wish); }} wishes={wishes} zh={locale==="zh-CN"} onDetails={spaceId?setExperienceId:undefined}/> : view === "dashboard" ? <div className="dashboard-view">
           <div className="metric-grid">
@@ -559,7 +560,7 @@ export default function Home() {
             <fieldset className="wish-editor-body" disabled={wishSaving}>
             <p className="draft-state" role="status">{draftError ? (locale === "zh-CN" ? "设备存储不可用，草稿暂未保存" : "Device storage unavailable. Draft not saved.") : draftKey ? (locale === "zh-CN" ? "草稿自动保存在此设备，关闭后可继续编辑" : "Draft saved on this device. Close and continue later.") : (locale === "zh-CN" ? "正在准备草稿保存…" : "Preparing draft storage…")}</p><p className="wish-editor-intro">{locale === "zh-CN" ? "一句话或一个链接就能保存，其他都可以以后再加。" : "A thought or a link is enough. Everything else can wait."}</p>
             <label>{locale === "zh-CN" ? "想做什么？" : "What would you like to do?"}<input autoFocus placeholder={locale === "zh-CN" ? "写一句话，或贴一个链接" : "A thought or a link is enough"} value={title} onChange={(e) => { setTitle(e.target.value); setError(""); }} /></label>
-            <details className="wish-editor-more wish-extras"><summary>{locale === "zh-CN" ? "补充信息（可选）" : "Add details (optional)"}</summary>
+            <section className="wish-extras"><h3>{locale === "zh-CN" ? "地点与计划 · 可选" : "Place & plans · optional"}</h3>
             <PlaceSearch value={address} onChange={value => { setAddress(value); setLocation(null); }} onSelect={setLocation} zh={locale === "zh-CN"}/>
             <label>{t.category} <span className="optional-label">{t.optional}</span><input list="wish-categories" value={category} onChange={(e) => setCategory(e.target.value)} placeholder={locale === "zh-CN" ? "例如：旅行、美食、约会" : "Travel, food, date night…"}/><datalist id="wish-categories">{categoryNames.map(name => <option key={name} value={name}/>)}</datalist></label>
             <fieldset className="status-editor"><legend>{t.status}</legend><div className="segmented-control">
@@ -567,18 +568,18 @@ export default function Home() {
             </div></fieldset>
             {status === "planned" && <label>{t.plannedDate} <span className="optional-label">{t.optional}</span><input type="date" value={plannedDate} onInput={(e) => setPlannedDate(e.currentTarget.value)} onChange={(e) => setPlannedDate(e.target.value)} /></label>}
             {status === "done" && <label>{t.completionNote} <span className="optional-label">{t.optional}</span><textarea value={completionNote} onChange={(e) => setCompletionNote(e.target.value)} rows={2} /></label>}
-            <details className="wish-editor-more" open={!!(note || url || checklistDraft.length)}><summary>{locale === "zh-CN" ? "备注、链接与准备清单" : "Notes, link & checklist"}</summary>
+            <section className="wish-editor-notes"><h3>{locale === "zh-CN" ? "随手补充 · 可选" : "A little more · optional"}</h3>
             <label>{t.note}<textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} /></label>
             <label>{t.pasteLink}<input type="url" value={url} onChange={(e) => { setUrl(e.target.value); setError(""); }} placeholder="https://" /></label>
-            <fieldset className="checklist-editor"><legend>{t.checklist} <span className="optional-label">{t.optional}</span></legend>
+            <PersistentDisclosure name="wish-checklist" initiallyOpen={false} title={`${t.checklist} · ${t.optional}`}><fieldset className="checklist-editor" aria-label={t.checklist}>
               {checklistDraft.map((item, index) => <div key={item.id}>
                 <input aria-label={`${t.checklistItem} ${index + 1}`} value={item.label} onChange={(event) => setChecklistDraft((items) => items.map((entry, itemIndex) => itemIndex === index ? { ...entry, label: event.target.value } : entry))} />
                 <button type="button" className="icon-button" aria-label={t.removeChecklistItem} onClick={() => setChecklistDraft((items) => items.filter((_, itemIndex) => itemIndex !== index))}><X size={16} /></button>
               </div>)}
               <button type="button" className="text-action" onClick={() => setChecklistDraft((items) => [...items, { id: crypto.randomUUID(), label: "", completed: false, position: items.length }])}><ListPlus size={16} />{t.checklistItem}</button>
-            </fieldset>
-            </details>
-            </details>
+            </fieldset></PersistentDisclosure>
+            </section>
+            </section>
             {error && <p className="form-error" role="alert">{error}</p>}
             </fieldset>
             <div className="dialog-actions"><button type="button" className="secondary" disabled={wishSaving} onClick={finishEditor}>{locale === "zh-CN" ? "放弃草稿" : "Discard draft"}</button><button type="button" className="secondary" disabled={wishSaving} onClick={resetEditor}>{locale === "zh-CN" ? "稍后继续" : "Keep draft"}</button><button type="submit" className="primary" disabled={wishSaving}>{wishSaving ? (locale === "zh-CN" ? "保存中…" : "Saving…") : editingId ? t.saveChanges : t.save}</button></div>

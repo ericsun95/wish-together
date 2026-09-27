@@ -1,4 +1,5 @@
 "use client";
+import { PersistentDisclosure } from "./persistent-disclosure";
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Heart, Pencil, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
@@ -178,12 +179,12 @@ function PetHome({ spaceId, zh }: { spaceId: string; zh: boolean }) {
           </div>
         </div>
         <PetPlayground key={pet.id} species={pet.species} appearance={pet.appearance} name={pet.name} zh={zh} busy={busy} onComplete={() => care('play')}/>
-        <details className="pet-optional-records"><summary>{zh ? '看看成长与陪伴记录' : 'Growth & moments together'}</summary>
+        <PersistentDisclosure name="pet-records" className="pet-optional-records" title={zh ? '成长与陪伴记录' : 'Growth & moments together'}>
             <div className="pet-growth-label"><span><Sparkles size={14}/> {zh ? '共同成长' : 'Growing together'}</span><span>{progress} / 100</span></div><progress max={100} value={progress} aria-label={zh ? '升到下一级的成长值' : 'Growth toward next level'}/>
             <p className="life-muted">{zh ? `再积累 ${100 - progress} 点成长值，升到 Lv. ${level + 1}` : `${100 - progress} more growth to reach Lv. ${level + 1}`}</p>
         <div className="pet-together"><h3>{zh ? '今天的共同照顾' : 'Today’s care, from both of you'}</h3><div className="pet-member-grid">{members.map(member => <div className="pet-member" key={member.user_id}><MiniAvatar member={member}/><div><strong>{member.display_name || (zh ? '另一半' : 'Partner')}{member.user_id === userId ? (zh ? '（你）' : ' (you)') : ''}</strong><span>{actions.map(action => { const done = journal.some(row => row.user_id === member.user_id && row.care_day === today && row.action === action.id); return <small key={action.id} className={done ? 'pet-done' : ''}>{action.emoji} {zh ? action.zh : action.en}{done ? ' ✓' : ' ·'}</small>; })}</span></div></div>)}</div></div>
         <div className="pet-journal"><h3>{zh ? '被爱着的小日常' : 'Little moments of love'}</h3>{!journal.length ? <p className="life-empty">{zh ? '从第一个抱抱开始，写下你们的共同日常。' : 'Start your shared story with a first cuddle.'}</p> : <ol>{journal.slice(0, 12).map(row => { const member = members.find(m => m.user_id === row.user_id), action = actions.find(a => a.id === row.action); return <li key={row.id}><span className="pet-journal-icon" aria-hidden="true">{action?.emoji}</span><div><p><strong>{member?.display_name || (zh ? '另一半' : 'Partner')}</strong> {zh ? action?.pastZh : action?.pastEn}</p><time dateTime={row.created_at}>{new Date(row.created_at).toLocaleString(zh ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></div><small>+10</small></li>; })}</ol>}</div>
-        </details>
+        </PersistentDisclosure>
       </>}
     {deleting && <LifeModal title={zh ? `删除「${deleting.name}」？` : `Delete ${deleting.name}?`} onClose={() => { if (!busy) setDeleting(null); }}>
       <div className="pet-delete-confirm"><p>{zh ? '这只宠物会从你们的共同小窝中移除，成长值和全部照顾记录也会永久删除，双方都会看到变化。此操作无法撤销。' : 'This pet, their growth and all care records will be permanently removed from your shared home for both partners. This cannot be undone.'}</p>
