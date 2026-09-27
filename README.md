@@ -38,3 +38,14 @@ Apply `202609220003_shared_life.sql` and `20260923022427_shared_life_permissions
 - Anniversary countdowns use calendar dates in the viewer's timezone; February 29 recurs on February 28 in non-leap years. These are in-app countdowns, not push notifications.
 
 Run `pnpm test:life` for date and random-selection edge cases. `pnpm test:db` checks table and Storage policy isolation with a minimal in-memory Storage schema; real upload/download behavior also requires the connected Supabase project.
+
+### Everyday tools
+
+- Search in the header finds wish titles, notes, places, completion notes and album captions/dates. Album results open the matching memory.
+- Wish and memory share cards show a preview before downloading a PNG or invoking the device share sheet. Place text is opt-in. No public upload is created.
+- More → Export & backup builds a ZIP containing wish/checklist records, memory text and stored album photos, dates, plans, comments, check-ins, pet records and pending local changes. Missing records/photos are reported in the UI and README inside a partial export. This is an export, not an automatic restore mechanism; original full-resolution uploads, account credentials and pet/game activity history are not included.
+- More → Layout preferences remembers 1–5 main sections in selection order and comfortable/compact wish cards on this device. Backgrounds remain available through the existing appearance editor.
+- Previously loaded wishes and the production app shell can be opened offline. New wishes and edits queue on this device and retry online using stable mutation IDs. Private album images and map tiles are not cached for offline use. Use an up-to-date browser with Web Locks support for shared offline edits.
+- Shared wish saves use the `save_wish` transaction and expected version, including checklist changes. Conflicts preserve local content for comparison or saving as a new wish. Local queues/caches are scoped by account and space; cloud permissions are still enforced by RLS. Clearing browser storage removes unsynced local content, so export it first.
+
+Validation: `npm run test:wishes` includes offline queue retention, lost acknowledgements, retries, scope isolation and storage failures; `npm run test:db` covers version conflicts, atomic rollback, idempotent creates and outsider denial.

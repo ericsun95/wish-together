@@ -20,7 +20,7 @@ try {
     create role authenticated;
     create role anon;
     alter default privileges in schema public grant all on tables to anon, authenticated;
-    create schema auth;
+    create schema auth; grant usage on schema auth to authenticated, anon;
     create schema storage;
     create table storage.buckets (id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
     create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text references storage.buckets(id), name text not null, unique(bucket_id,name));
@@ -74,6 +74,31 @@ try {
   const savedWish = await db.query("insert into public.wishes (space_id, created_by, title, url, address) values ($1, $2, $3, $4, $5) returning id", [spaceId, owner, "Cafe", null, "123 Main St"]);
   const wishId = savedWish.rows[0].id;
   await db.query("insert into public.wish_checklist_items (wish_id, space_id, label) values ($1, $2, $3)", [wishId, spaceId, "Book a table"]);
+  // Atomic save, same-token retry, checklist versioning and stale editor protection.
+  const payload={title:'Updated cafe',note:'keep me',url:'',address:'123 Main St',category:'Food',status:'wanted',plannedDate:'',completionNote:'',location:null};
+  const mutation='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const before=(await db.query('select version from public.wishes where id=$1',[wishId])).rows[0].version;
+  const saveSql='select public.save_wish($1,$2,$3,$4,$5::jsonb,$6::jsonb) as version';
+  const list=[{id:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',label:'Book a table',completed:false}];
+  const version=(await db.query(saveSql,[wishId,spaceId,before,mutation,JSON.stringify(payload),JSON.stringify(list)])).rows[0].version;
+  assert.equal((await db.query(saveSql,[wishId,spaceId,before,mutation,JSON.stringify(payload),JSON.stringify(list)])).rows[0].version,version,'A retry returns the original saved version');
+  await as(partner);
+  await db.query('update public.wish_checklist_items set completed=true where wish_id=$1',[wishId]);
+  await as(owner);
+  await rejects(saveSql,[wishId,spaceId,version,mutation,JSON.stringify({...payload,title:'Stale'}),JSON.stringify(list)]);
+  assert.equal((await db.query('select title from public.wishes where id=$1',[wishId])).rows[0].title,'Updated cafe');
+  const latest=(await db.query('select version from public.wishes where id=$1',[wishId])).rows[0].version;
+  await rejects(saveSql,[wishId,spaceId,latest,'cccccccc-cccc-4ccc-8ccc-cccccccccccc',JSON.stringify({...payload,title:'Should rollback'}),JSON.stringify([{...list[0],label:''}])]);
+  assert.equal((await db.query('select title from public.wishes where id=$1',[wishId])).rows[0].title,'Updated cafe','Invalid child rolls back the parent');
+  assert.equal((await db.query('select completed from public.wish_checklist_items where wish_id=$1',[wishId])).rows[0].completed,true);
+  await as(outsider);
+  await rejects(saveSql,[wishId,spaceId,latest,'dddddddd-dddd-4ddd-8ddd-dddddddddddd',JSON.stringify(payload),'[]']);
+  await as(owner);
+  const newId='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  const newArgs=[newId,spaceId,null,'ffffffff-ffff-4fff-8fff-ffffffffffff',JSON.stringify(payload),'[]'];
+  await db.query(saveSql,newArgs);await db.query(saveSql,newArgs);
+  assert.equal((await db.query('select count(*)::int as n from public.wishes where id=$1',[newId])).rows[0].n,1,'A retried new wish is not duplicated');
+  await db.query('delete from public.wishes where id=$1',[newId]);
   await db.query("insert into public.checkins (space_id, wish_id, created_by, note) values ($1, $2, $3, $4)", [spaceId, wishId, owner, "Great day"]);
 
   await as(partner);

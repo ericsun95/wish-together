@@ -3,6 +3,16 @@ import { PlaceSearch } from "@/components/place-search";
 import "./wish-editor.css";
 import "./mobile.css";
 import "./relaxed.css";
+import "./everyday.css";
+import { useWishSync, SyncStatus } from '@/components/wish-sync';
+import { GlobalSearch } from '@/components/global-search';
+import { ShareCard, type ShareContent } from '@/components/share-card';
+import { ContentBackup } from '@/components/content-backup';
+import { LayoutPreferences, useLayoutPreferences, sectionName, sections } from '@/components/layout-preferences';
+import { LifeModal } from '@/components/life-ui';
+import { Memories } from '@/components/memories';
+import { rowWish, type SyncedWish } from '@/lib/wish-sync';
+import { spaceRows } from '@/lib/space-export';
 import { PersistentDisclosure, useDisclosurePreference } from "@/components/persistent-disclosure";
 import { quickWish } from "@/lib/quick-wish";
 import { InstallApp } from "@/components/install-app";
@@ -27,7 +37,7 @@ const SoloAdventure = dynamic(() => import("@/components/adventure/solo-adventur
 
 type ChecklistItem = { id: string; label: string; completed: boolean; position: number };
 type WishStatus = "wanted" | "planned" | "done";
-type Wish = { location?: Coordinates | null; deletedAt?: string | null; id: string; title: string; note: string; url: string; address: string; category: string; status: WishStatus; plannedDate: string; completionNote: string; createdAt: string; checklist: ChecklistItem[] };
+type Wish = SyncedWish;
 type View = "wishes" | "done" | "dashboard" | "map" | "life" | "pet" | "adventure";
 
 const WISHES_KEY = "wish-together:wishes";
@@ -72,8 +82,7 @@ function readWishes(key: string): Wish[] {
 export default function Home() {
   const [locale, setLocale] = useState<Locale>("zh-CN");
   const [allWishes, setWishes] = useState<Wish[]>([]);
-  const wishes = allWishes.filter(wish => !wish.deletedAt);
-  const removedWishes = allWishes.filter(wish => wish.deletedAt);
+
   const [trashOpen, setTrashOpen] = useState(false);
   const [undoId, setUndoId] = useState<string | null>(null);
   const [removeBusy, setRemoveBusy] = useState<string | null>(null);
@@ -115,6 +124,18 @@ export default function Home() {
   const [completionNote, setCompletionNote] = useState("");
   const [checklistDraft, setChecklistDraft] = useState<ChecklistItem[]>([]);
   const [error, setError] = useState("");
+  const [baseVersion,setBaseVersion]=useState<number|null>(null);
+  const sync=useWishSync(draftUser,spaceId,locale==='zh-CN');
+  const displayedWishes=sync.overlay(allWishes), wishes=displayedWishes.filter(w=>!w.deletedAt), removedWishes=displayedWishes.filter(w=>w.deletedAt);
+  const prefs=useLayoutPreferences();
+  const [searchOpen,setSearchOpen]=useState(false),[settingsOpen,setSettingsOpen]=useState(false),[backupOpen,setBackupOpen]=useState(false);
+  const [share,setShare]=useState<ShareContent|null>(null),[memoryId,setMemoryId]=useState<string|null>(null),[inspected,setInspected]=useState<Wish|null>(null);
+  const [partnerNotice,setPartnerNotice]=useState('');
+  const versions=useRef<Record<string,number>>({});
+  const loadedWishes=useRef(false);
+  const cacheKey=draftUser&&spaceId?`wish-together:cache:v1:${draftUser}:${spaceId}`:null;
+  useEffect(()=>{versions.current={};loadedWishes.current=false;setPartnerNotice('');setSearchOpen(false);setBackupOpen(false);setMemoryId(null);setShare(null);setInspected(null);if(cacheKey)setWishes(readWishes(cacheKey));},[cacheKey]);
+  useEffect(()=>{if('serviceWorker' in navigator && process.env.NODE_ENV==='production')void navigator.serviceWorker.register(`${process.env.NEXT_PUBLIC_BASE_PATH||''}/sw.js`,{scope:`${process.env.NEXT_PUBLIC_BASE_PATH||''}/`}).catch(()=>{});},[]);
 
   useEffect(() => {
     const savedLocale = localStorage.getItem(LOCALE_KEY);
@@ -142,28 +163,26 @@ export default function Home() {
     async function loadWishes() {
       if (removeLock.current || wishSaveLock.current) return;
       const revision = wishMutation.current;
-      const { data: rows, error: wishError } = await client.from("wishes")
-        .select("id, title, note, url, address, category, status, planned_date, completed_note, created_at, latitude, longitude, deleted_at").eq("space_id", spaceId).order("created_at", { ascending: false });
-      if (!active) return;
-      if (wishError || !rows) return setError(messages[locale].wishLoadError);
-      const ids = rows.map((row) => row.id);
-      const { data: items, error: itemError } = ids.length
-        ? await client.from("wish_checklist_items").select("id, wish_id, label, completed, position").in("wish_id", ids).order("position")
-        : { data: [], error: null };
-      if (!active) return;
-      if (itemError) return setError(messages[locale].wishLoadError);
-      if (revision !== wishMutation.current || removeLock.current || wishSaveLock.current) return;
-      setWishes(rows.map((row) => ({
-        id: row.id, location: coordinates(row), deletedAt: row.deleted_at, title: row.title, note: row.note, url: row.url ?? "", address: row.address ?? "", category: row.category ?? "",
-        status: row.status as WishStatus, plannedDate: row.planned_date ?? "", completionNote: row.completed_note ?? "", createdAt: row.created_at,
-        checklist: (items ?? []).filter((item) => item.wish_id === row.id),
-      })));
+      try {
+      if(!navigator.onLine)return;
+      const rows=await spaceRows('wishes',spaceId!);
+      const items=await spaceRows('wish_checklist_items',spaceId!);
+      if(!active||revision!==wishMutation.current||removeLock.current||wishSaveLock.current)return;
+      const next=rows.map(row=>rowWish(row,items.filter(i=>i.wish_id===row.id).sort((a,b)=>Number(a.position)-Number(b.position)) as ChecklistItem[])).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+      const changed=next.filter(w=>loadedWishes.current&&versions.current[w.id]!==w.version&&w.updatedBy&&w.updatedBy!==draftUser);
+      if(changed.length)setPartnerNotice(locale==='zh-CN'?`对方更新了：${changed.map(w=>w.title).slice(0,3).join('、')}`:`Updated by your partner: ${changed.map(w=>w.title).slice(0,3).join(', ')}`);
+      loadedWishes.current=true;
+      setError(previous=>previous===messages[locale].wishLoadError?'':previous);
+      versions.current=Object.fromEntries(next.map(w=>[w.id,w.version||1]));
+      setWishes(next);
+      if(cacheKey)try{localStorage.setItem(cacheKey,JSON.stringify(next));}catch{/* Keep loaded content if cache is full. */}
+      }catch{if(active)setError(messages[locale].wishLoadError);}
     }
     void loadWishes();
     const timer = window.setInterval(loadWishes, 15000);
     window.addEventListener("life-changed", loadWishes);
     return ()=>{active=false;window.clearInterval(timer);window.removeEventListener("life-changed",loadWishes);};
-  }, [spaceId, locale]);
+  }, [spaceId, locale, draftUser, cacheKey]);
 
   useEffect(() => {
     if (!supabase || !spaceId) return;
@@ -191,6 +210,7 @@ export default function Home() {
   }, [spaceId]);
 
   const changeSpace = useCallback((nextSpaceId: string | null) => {
+    if(activeSpace.current===nextSpaceId)return;
     setAdding(false); setUndoId(null); setTrashOpen(false);
     setSpaceId(nextSpaceId);
     setExperienceId(null);
@@ -243,10 +263,10 @@ export default function Home() {
     if (!adding || !draftKey || editorScope !== draftKey) return;
     try {
       const content = editingId || title || note || url || address || category || plannedDate || completionNote || checklistDraft.length || status !== "wanted";
-      writeDraft(localStorage, draftKey, editingId || "new", content ? { editingId, title, note, url, address, category, status, plannedDate, completionNote, location, checklist: checklistDraft } : null);
+      writeDraft(localStorage, draftKey, editingId || "new", content ? { baseVersion, editingId, title, note, url, address, category, status, plannedDate, completionNote, location, checklist: checklistDraft } : null);
       setDraftError(false);
     } catch { setDraftError(true); }
-  }, [adding, draftKey, editorScope, editingId, title, note, url, address, category, status, plannedDate, completionNote, location, checklistDraft]);
+  }, [adding, draftKey, editorScope, editingId, title, note, url, address, category, status, plannedDate, completionNote, location, checklistDraft, baseVersion]);
   useEffect(() => {
     if (adding && editorScope !== draftKey) setAdding(false);
   }, [draftKey, editorScope, adding]);
@@ -256,7 +276,7 @@ export default function Home() {
     return () => clearTimeout(timer);
   }, [undoId]);
   function applyDraft(draft: WishDraft) {
-    setEditingId(draft.editingId); setTitle(draft.title); setNote(draft.note); setUrl(draft.url);
+    setBaseVersion(draft.baseVersion ?? null); setEditingId(draft.editingId); setTitle(draft.title); setNote(draft.note); setUrl(draft.url);
     setAddress(draft.address); setLocation(draft.location); setCategory(draft.category); setStatus(draft.status);
     setPlannedDate(draft.plannedDate); setCompletionNote(draft.completionNote); setChecklistDraft(draft.checklist);
     setEditorScope(draftKey); setError(""); setAdding(true);
@@ -266,7 +286,7 @@ export default function Home() {
     resetEditor();
   }
   function resetEditor() {
-    setLocation(null); setTitle(""); setUrl(""); setAddress(""); setCategory(""); setNote(""); setStatus("wanted"); setPlannedDate(""); setCompletionNote("");
+    setBaseVersion(null); setLocation(null); setTitle(""); setUrl(""); setAddress(""); setCategory(""); setNote(""); setStatus("wanted"); setPlannedDate(""); setCompletionNote("");
     setChecklistDraft([]); setEditingId(null); setError(""); setAdding(false);
   }
 
@@ -279,6 +299,8 @@ export default function Home() {
   }
 
   function openEditWish(wish: Wish) {
+    if(sync.pending.some(p=>p.wish.id===wish.id)){setInspected(wish);return;}
+    setBaseVersion(wish.version??null);
     const saved = draftKey ? readDrafts(localStorage, draftKey)[wish.id] : null;
     if (saved) { applyDraft(saved); return; }
     setEditorScope(draftKey); setLocation(wish.location ?? null);
@@ -356,43 +378,12 @@ export default function Home() {
     const draft = checklistDraft.map((item) => ({ ...item, label: item.label.trim() })).filter((item) => item.label);
     let newWish: Wish;
     if (supabase && spaceId) {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return setError(t.wishSaveError);
-      if (editingId) {
-        const { error: updateError } = await supabase.from("wishes").update({
-          title: input.title, note: note.trim(), url: input.url || null,
-          address: address.trim(), latitude: location?.latitude ?? null, longitude: location?.longitude ?? null, category: category.trim(), status, planned_date: status === "planned" ? plannedDate || null : null,
-          completed_at: status === "done" ? new Date().toISOString() : null, completed_note: status === "done" ? completionNote.trim() : "",
-        }).eq("id", editingId);
-        if (updateError) return setError(t.wishSaveError);
-        const { error: removeError } = await supabase.from("wish_checklist_items").delete().eq("wish_id", editingId);
-        if (removeError) return setError(t.wishSaveError);
-        const items = draft.map((item, position) => ({ id: item.id, wish_id: editingId, space_id: spaceId, label: item.label, completed: item.completed, position }));
-        if (items.length && (await supabase.from("wish_checklist_items").insert(items)).error) return setError(t.wishSaveError);
-        if (activeSpace.current !== saveScope) return;
-        setWishes((current) => current.map((wish) => wish.id === editingId ? {
-          ...wish, location, title: input.title, note: note.trim(), url: input.url, address: address.trim(), category: category.trim(), status,
-          plannedDate: status === "planned" ? plannedDate : "", completionNote: status === "done" ? completionNote.trim() : "",
-          checklist: draft.map((item, position) => ({ ...item, position })),
-        } : wish));
-        finishEditor();
-        return;
-      }
-      const { data, error: insertError } = await supabase.from("wishes").insert({
-        space_id: spaceId, created_by: user.id, title: input.title, note: note.trim(),
-        url: input.url || null, latitude: location?.latitude ?? null, longitude: location?.longitude ?? null, address: address.trim(), category: category.trim(), status,
-        planned_date: status === "planned" ? plannedDate || null : null, completed_at: status === "done" ? new Date().toISOString() : null,
-        completed_note: status === "done" ? completionNote.trim() : "",
-      }).select("id").single();
-      if (insertError || !data) return setError(t.wishSaveError);
-      const items = draft.map((item, position) => ({ id: item.id, wish_id: data.id, space_id: spaceId, label: item.label, completed: item.completed, position }));
-      if (items.length) {
-        const { error: itemError } = await supabase.from("wish_checklist_items").insert(items);
-        if (itemError) { await supabase.from("wishes").delete().eq("id", data.id); return setError(t.wishSaveError); }
-      }
-      newWish = { location, id: data.id, title: input.title, note: note.trim(), url: input.url, address: address.trim(), category: category.trim(), status, createdAt: new Date().toISOString(),
-        plannedDate: status === "planned" ? plannedDate : "", completionNote: status === "done" ? completionNote.trim() : "",
-        checklist: draft.map((item, position) => ({ ...item, position })) };
+      if(editingId&&baseVersion===null){setError(locale==='zh-CN'?'这个旧草稿没有版本记录。请保留文字后重新打开云端心愿，或另存为新心愿。':'This older draft has no version. Copy it to a new wish or reopen the cloud wish.');return;}
+      if(draft.length>100||draft.some(i=>i.label.length>200)){setError(locale==='zh-CN'?'清单最多 100 项，每项最多 200 字。':'Up to 100 checklist items, 200 characters each.');return;}
+      newWish={id:editingId||crypto.randomUUID(),title:input.title,note:note.trim(),url:input.url,address:address.trim(),category:category.trim(),status,plannedDate:status==='planned'?plannedDate:'',completionNote:status==='done'?completionNote.trim():'',location,createdAt:allWishes.find(w=>w.id===editingId)?.createdAt||new Date().toISOString(),checklist:draft,version:baseVersion??undefined};
+      await sync.enqueue(newWish,editingId?baseVersion:null);
+      if(activeSpace.current!==saveScope)return;
+      finishEditor();setView(status==='done'?'done':'wishes');return;
     } else {
       if (editingId) {
         if (activeSpace.current !== saveScope) return;
@@ -410,45 +401,24 @@ export default function Home() {
     finally { wishMutation.current++; wishSaveLock.current = false; setWishSaving(false); }
   }
 
+  async function saveAction(wish:Wish) {
+    if(supabase){if(wish.version===undefined||sync.pending.some(p=>p.wish.id===wish.id))throw Error('Pending');await sync.enqueue(wish,wish.version);}
+    else setWishes(all=>all.map(w=>w.id===wish.id?wish:w));
+  }
   async function toggleWish(wish: Wish) {
-    const nextStatus: WishStatus = wish.status === "done" ? "wanted" : "done";
-    if (supabase) {
-      const {error} = await supabase.from("wishes").update({ status: nextStatus, planned_date: null, completed_at: nextStatus === "done" ? new Date().toISOString() : null }).eq("id", wish.id);
-      if(error) {setError(t.wishSaveError); return;}
-    }
-    setWishes((all) => all.map((item) => item.id === wish.id ? { ...item, status: nextStatus, plannedDate: "" } : item));
-    if(nextStatus === "done") setCompletedName(wish.title);
+    const nextStatus: WishStatus=wish.status==='done'?'wanted':'done';
+    try{await saveAction({...wish,status:nextStatus,plannedDate:''});if(nextStatus==='done')setCompletedName(wish.title);}catch{setError(t.wishSaveError);}
   }
-
-  async function toggleChecklist(wishId: string, item: ChecklistItem) {
-    if (supabase) await supabase.from("wish_checklist_items").update({ completed: !item.completed }).eq("id", item.id);
-    setWishes((all) => all.map((wish) => wish.id === wishId ? { ...wish, checklist: wish.checklist.map((entry) => entry.id === item.id ? { ...entry, completed: !entry.completed } : entry) } : wish));
-  }
-
-  async function setRemoved(id: string, removed: boolean) {
-    if (removeLock.current) return;
-    wishMutation.current++;
-    removeLock.current = true; setRemoveBusy(id); setError("");
-    const scope = spaceId, deletedAt = removed ? new Date().toISOString() : null;
-    try {
-      if (supabase) {
-        const { data, error } = await supabase.from("wishes").update({ deleted_at: deletedAt }).eq("id", id).eq("space_id", scope).select("id").single();
-        if (error || !data) throw error || new Error("Wish unavailable");
-      }
-      if (activeSpace.current !== scope) return;
-      setWishes(all => all.map(w => w.id === id ? { ...w, deletedAt } : w));
-      setUndoId(removed ? id : null);
-    } catch { if (activeSpace.current === scope) setError(t.wishSaveError); }
-    finally { wishMutation.current++; removeLock.current = false; setRemoveBusy(null); }
-  }
+  async function toggleChecklist(wishId:string,item:ChecklistItem){const wish=wishes.find(w=>w.id===wishId);if(!wish)return;try{await saveAction({...wish,checklist:wish.checklist.map(i=>i.id===item.id?{...i,completed:!i.completed}:i)});}catch{setError(t.wishSaveError);}}
+  async function setRemoved(id:string,removed:boolean){if(removeLock.current)return;const wish=displayedWishes.find(w=>w.id===id);if(!wish)return;removeLock.current=true;setRemoveBusy(id);try{await saveAction({...wish,deletedAt:removed?new Date().toISOString():null});setUndoId(removed?id:null);}catch{setError(t.wishSaveError);}finally{removeLock.current=false;setRemoveBusy(null);}}
   async function deleteWish(id: string) { await setRemoved(id, true); }
 
   return (
     <SpaceGate theme={theme} backgroundPhoto={backgroundPhoto} locale={locale} onLocaleChange={changeLocale} onSpaceChange={changeSpace} wishes={wishes} onWish={wish => setExperienceId(wish.id)}>
-    <main className="app-shell" data-theme={theme} style={themeStyle}>
+    <main className="app-shell" data-density={prefs.density} data-theme={theme} style={themeStyle}>
       <header className="topbar">
         <div className="brand"><Heart size={21} fill="currentColor" strokeWidth={1.5} /><span>{t.brand}</span></div>
-        <div className="topbar-actions">
+        <div className="topbar-actions"><button className="icon-button" aria-label={locale==='zh-CN'?'搜索所有内容':'Search everything'} onClick={()=>setSearchOpen(true)}><Search size={18}/></button>
           <button type="button" className="icon-button appearance-button" title={t.appearance} aria-label={t.appearance} onClick={() => { setPhotoError(""); setPhotoDraft(null); setAppearanceOpen(true); }}><Palette size={18} /></button>
           <div className="locale-control" role="group" aria-label={t.language}>
             <button type="button" aria-pressed={locale === "zh-CN"} onClick={() => changeLocale("zh-CN")}>中</button>
@@ -461,18 +431,18 @@ export default function Home() {
 
         <div className="section-head relaxed-nav">
           <div className="tabs" role="tablist" aria-label={locale === "zh-CN" ? "主要栏目" : "Main sections"}>
-            <button role="tab" aria-selected={view === "wishes"} onClick={() => { setView("wishes");  setStatusFilter("all"); }}>{locale === "zh-CN" ? "心愿" : "Wishes"}</button>
-            <button role="tab" aria-selected={view === "map"} onClick={() => { setView("map");  }}><Map size={15}/>{t.map}</button>
-            <button role="tab" aria-selected={view === "pet"} onClick={() => { setView("pet");  }}><PawPrint size={15}/>{locale === "zh-CN" ? "小窝" : "Pets"}</button>
+            {prefs.tabs.map(target=><button key={target} role="tab" aria-selected={view===target} onClick={()=>{setView(target);setStatusFilter('all');setCategoryFilter('all');}}>{sectionName(target,locale==='zh-CN')}</button>)}
           </div>
           <button type="button" className="secondary more-toggle" aria-expanded={moreOpen} aria-controls="extra-sections" onClick={() => setMoreOpen(!moreOpen)}>{locale === "zh-CN" ? "更多" : "More"}</button>
           <button className="primary" type="button" onClick={openNewWish}><Plus size={18}/>{locale === "zh-CN" ? "记一个" : "Add a wish"}</button>
         </div>
         {moreOpen && <nav className="extra-sections" id="extra-sections" aria-label={locale === "zh-CN" ? "更多栏目" : "More sections"}>
-          {([['done', locale === "zh-CN" ? '做过的事' : 'Things we did'], ['life', locale === "zh-CN" ? '纪念日与相册' : 'Dates & memories'], ['adventure', locale === "zh-CN" ? '一起冒险' : 'Adventures'], ['dashboard', t.dashboard]] as [View,string][]).map(([target,label]) => <button type="button" key={target} aria-current={view === target ? 'page' : undefined} onClick={() => { setView(target); setStatusFilter('all'); setCategoryFilter('all');  }}>{label}</button>)}
+          {sections.filter(s=>!prefs.tabs.includes(s)).map(target=><button type="button" key={target} aria-current={view===target?'page':undefined} onClick={()=>{setView(target);setStatusFilter('all');setCategoryFilter('all');}}>{sectionName(target,locale==='zh-CN')}</button>)}
+          <button onClick={()=>setSettingsOpen(true)}>{locale==='zh-CN'?'布局偏好':'Layout preferences'}</button><button onClick={()=>setBackupOpen(true)}>{locale==='zh-CN'?'导出与备份':'Export & backup'}</button>
           <button type="button" onClick={() => { setTrashOpen(v => !v);  }}>{locale === "zh-CN" ? "已删除心愿" : "Removed wishes"}</button><InstallApp zh={locale === "zh-CN"}/>
         </nav>}
         {!['wishes','map','pet'].includes(view) && <p className="current-section">{view === 'done' ? (locale === 'zh-CN' ? '做过的事，慢慢收藏。' : 'Things we did, memories to keep.') : view === 'life' ? (locale === 'zh-CN' ? '纪念日与相册' : 'Dates & memories') : view === 'adventure' ? (locale === 'zh-CN' ? '一起冒险' : 'Adventures') : t.dashboard}</p>}
+        <SyncStatus sync={sync} zh={locale==='zh-CN'} onInspect={setInspected}/>{partnerNotice&&<div className="partner-notice" role="status"><span>{partnerNotice}</span><button onClick={()=>setPartnerNotice('')} aria-label={locale==='zh-CN'?'关闭更新提示':'Dismiss update'}><X size={16}/></button></div>}
         {completedName && <p className="completion-notice" role="status">{locale === "zh-CN" ? `我们做过啦 · ${completedName}。以后也可以补照片和感想。` : `We did it · ${completedName}. Add memories whenever you like.`}</p>}
 
         {!adding && Object.entries(drafts).some(([id]) => id === "new" || wishes.some(w => w.id === id)) && <div className="draft-banner"><span>{locale === "zh-CN" ? "有未完成的草稿 · 仅此设备" : "Unfinished drafts · this device"}</span>{Object.entries(drafts).filter(([id]) => id === "new" || wishes.some(w => w.id === id)).map(([id, draft]) => <button type="button" key={id} onClick={() => applyDraft(draft)}>{locale === "zh-CN" ? "继续：" : "Continue: "}{draft.title || (locale === "zh-CN" ? "新心愿" : "New wish")}</button>)}</div>}
@@ -512,7 +482,7 @@ export default function Home() {
         ) : (
           <div className="wish-list">
             {visible.map((wish) => (
-              <article className="wish-row" key={wish.id}>
+              <article className="wish-row" data-pending={sync.pending.some(p=>p.wish.id===wish.id)} key={wish.id}>
                 <div className="wish-mark"><Heart size={17} /></div>
                 <div className="wish-content">
                   <h2>{wish.title}</h2>
@@ -525,15 +495,15 @@ export default function Home() {
                   {wish.url && <a href={wish.url} target="_blank" rel="noopener noreferrer"><Link2 size={14} />{new URL(wish.url).hostname}<ArrowUpRight size={14} /></a>}
                   {wish.checklist.length > 0 && <div className="wish-checklist">
                     {wish.checklist.map((item) => <label key={item.id}>
-                      <input type="checkbox" checked={item.completed} onChange={() => void toggleChecklist(wish.id, item)} />
+                      <input type="checkbox" checked={item.completed} disabled={sync.pending.some(p=>p.wish.id===wish.id)} onChange={() => void toggleChecklist(wish.id, item)} />
                       <span>{item.label}</span>
                     </label>)}
                   </div>}
                 </div>
-                <div className="row-actions">
+                <div className="row-actions"><button type="button" className="icon-button" aria-label={locale==='zh-CN'?'生成分享卡片':'Create share card'} title={locale==='zh-CN'?'分享卡片':'Share card'} onClick={()=>setShare({title:wish.title,note:wish.completionNote||wish.note,address:wish.address,date:wish.plannedDate})}><ArrowUpRight size={17}/></button>
                   <button type="button" className="icon-button" title={t.edit} aria-label={t.edit} onClick={() => openEditWish(wish)}><Pencil size={17} /></button>
-                  <button type="button" className="icon-button" title={wish.status === "done" ? t.undo : t.markDone} aria-label={wish.status === "done" ? t.undo : t.markDone} onClick={() => void toggleWish(wish)}><Check size={18} /></button>
-                  <button type="button" className="icon-button danger" title={t.delete} aria-label={t.delete} disabled={!!removeBusy} onClick={() => void deleteWish(wish.id)}><Trash2 size={17} /></button>
+                  <button type="button" className="icon-button" title={wish.status === "done" ? t.undo : t.markDone} aria-label={wish.status === "done" ? t.undo : t.markDone} disabled={sync.pending.some(p=>p.wish.id===wish.id)} onClick={() => void toggleWish(wish)}><Check size={18} /></button>
+                  <button type="button" className="icon-button danger" title={t.delete} aria-label={t.delete} disabled={!!removeBusy||sync.pending.some(p=>p.wish.id===wish.id)} onClick={() => void deleteWish(wish.id)}><Trash2 size={17} /></button>
                 </div>
               </article>
             ))}
@@ -541,12 +511,18 @@ export default function Home() {
         )}
         {error && !adding && <p className="form-error" role="alert">{error}</p>}
 
-        {trashOpen && <section className="recovery-panel" aria-label={locale === "zh-CN" ? "恢复心愿" : "Restore wishes"}><p>{locale === "zh-CN" ? "删除的心愿和关联记录会保留，可随时恢复。" : "Removed wishes and their records are kept here for recovery."}</p>{!removedWishes.length && <p>{locale === "zh-CN" ? "没有已删除的心愿" : "No removed wishes"}</p>}{removedWishes.map(w => <div key={w.id}><span>{w.title}</span><button className="secondary" disabled={!!removeBusy} onClick={() => void setRemoved(w.id, false)}>{locale === "zh-CN" ? "恢复" : "Restore"}</button></div>)}</section>}
+        {trashOpen && <section className="recovery-panel" aria-label={locale === "zh-CN" ? "恢复心愿" : "Restore wishes"}><p>{locale === "zh-CN" ? "删除的心愿和关联记录会保留，可随时恢复。" : "Removed wishes and their records are kept here for recovery."}</p>{!removedWishes.length && <p>{locale === "zh-CN" ? "没有已删除的心愿" : "No removed wishes"}</p>}{removedWishes.map(w => <div key={w.id}><span>{w.title}</span><button className="secondary" disabled={!!removeBusy||sync.pending.some(p=>p.wish.id===w.id)} onClick={() => void setRemoved(w.id, false)}>{locale === "zh-CN" ? "恢复" : "Restore"}</button></div>)}</section>}
         <p className="storage-note">{supabase ? t.sharedStorage : t.localOnly}</p>
       </section>
 
+      {searchOpen&&<GlobalSearch wishes={wishes} space={spaceId} zh={locale==='zh-CN'} onClose={()=>setSearchOpen(false)} onWish={w=>{setSearchOpen(false);openEditWish(w);}} onMemory={id=>{setSearchOpen(false);setMemoryId(id);}}/>}
+      {settingsOpen&&<LayoutPreferences prefs={prefs} zh={locale==='zh-CN'} onClose={()=>setSettingsOpen(false)} onAppearance={()=>{setSettingsOpen(false);setAppearanceOpen(true);}}/>}
+      {backupOpen&&<ContentBackup space={spaceId} wishes={displayedWishes} pending={sync.pending} zh={locale==='zh-CN'} onClose={()=>setBackupOpen(false)}/>}
+      {share&&<ShareCard content={share} zh={locale==='zh-CN'} onClose={()=>setShare(null)}/>}
+      {memoryId&&spaceId&&<LifeModal title={locale==='zh-CN'?'找到的回忆':'Found memory'} onClose={()=>setMemoryId(null)}><Memories spaceId={spaceId} wishes={wishes} zh={locale==='zh-CN'} initialMemoryId={memoryId} onBackground={memoryBackground}/></LifeModal>}
+      {inspected&&<LifeModal title={locale==='zh-CN'?'此设备上的版本':'Version on this device'} onClose={()=>setInspected(null)}><div className="pending-preview"><p className="life-muted">{locale==='zh-CN'?'我的待同步内容':'My pending changes'}</p><h3>{inspected.title}</h3><p>{inspected.note}</p><p>{inspected.address}</p><p>{inspected.completionNote}</p><p>{inspected.plannedDate}</p>{inspected.checklist.map(i=><p key={i.id}>{i.completed?'✓':'○'} {i.label}</p>)}</div>{allWishes.filter(w=>w.id===inspected.id).map(cloud=><div className="pending-preview cloud-preview" key={cloud.id}><p className="life-muted">{locale==='zh-CN'?'最近载入的云端版本':'Last loaded cloud version'}</p><h3>{cloud.title}</h3><p>{cloud.note}</p><p>{cloud.address}</p><p>{cloud.completionNote}</p><p>{cloud.plannedDate}</p>{cloud.checklist.map(i=><p key={i.id}>{i.completed?'✓':'○'} {i.label}</p>)}</div>)}<button className="secondary" onClick={()=>{setShare({title:inspected.title,note:inspected.note,address:inspected.address});setInspected(null);}}>{locale==='zh-CN'?'生成卡片':'Create card'}</button></LifeModal>}
       {spaceId && experienceId && wishes.find(w=>w.id===experienceId) && <WishExperience key={`${spaceId}:${experienceId}`} spaceId={spaceId} wish={wishes.find(w=>w.id===experienceId)!} wishes={wishes} zh={locale==="zh-CN"} onClose={()=>setExperienceId(null)} onBackground={memoryBackground}/>}
-      {undoId && <div className="undo-toast" role="status"><span>{locale === "zh-CN" ? "心愿已移到已删除列表" : "Wish moved to removed list"}</span><button disabled={!!removeBusy} onClick={() => void setRemoved(undoId, false)}>{locale === "zh-CN" ? "撤销" : "Undo"}</button></div>}
+      {undoId && <div className="undo-toast" role="status"><span>{locale === "zh-CN" ? "心愿已移到已删除列表" : "Wish moved to removed list"}</span><button disabled={!!removeBusy||sync.pending.some(p=>p.wish.id===undoId)} onClick={() => void setRemoved(undoId, false)}>{locale === "zh-CN" ? "撤销" : "Undo"}</button></div>}
       {adding && <div className="dialog-backdrop">
         <div className="dialog wish-editor-dialog" onKeyDown={event => {
           if (event.key !== "Tab") return;
@@ -580,7 +556,7 @@ export default function Home() {
             </fieldset></PersistentDisclosure>
             </section>
             </section>
-            {error && <p className="form-error" role="alert">{error}</p>}
+            {error && <p className="form-error" role="alert">{error}</p>}{editingId&&baseVersion===null&&supabase&&<button type="button" onClick={()=>{setEditingId(null);setBaseVersion(null);}}>{locale==='zh-CN'?'另存为新心愿':'Save as a new wish'}</button>}
             </fieldset>
             <div className="dialog-actions"><button type="button" className="secondary" disabled={wishSaving} onClick={finishEditor}>{locale === "zh-CN" ? "放弃草稿" : "Discard draft"}</button><button type="button" className="secondary" disabled={wishSaving} onClick={resetEditor}>{locale === "zh-CN" ? "稍后继续" : "Keep draft"}</button><button type="submit" className="primary" disabled={wishSaving}>{wishSaving ? (locale === "zh-CN" ? "保存中…" : "Saving…") : editingId ? t.saveChanges : t.save}</button></div>
           </form>

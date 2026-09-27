@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import ts from 'typescript';
+const compile=path=>`data:text/javascript;base64,${Buffer.from(ts.transpileModule(fs.readFileSync(new URL(path,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText).toString('base64')}`;
+const draft=compile('../src/lib/wish-drafts.ts');
+let source=ts.transpileModule(fs.readFileSync(new URL('../src/lib/wish-sync.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText.replace("'./wish-drafts'",JSON.stringify(draft));
+const {readPending,flushPending,syncKey,overlayPending}=await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+const entries=new Map(),storage={getItem:k=>entries.get(k)||null,setItem:(k,v)=>entries.set(k,v)};
+const key=syncKey('alice','ours'),wish={id:'wish-1',title:'Local thought',checklist:[]};const p={mutation:'retry-token',expected:1,wish};
+storage.setItem(key,JSON.stringify([p]));assert.deepEqual(readPending(storage,syncKey('bob','ours')),[]);assert.deepEqual(readPending(storage,syncKey('alice','other')),[]);
+assert.equal(await flushPending(storage,key,async()=> 'retry'),false);assert.equal(readPending(storage,key).length,1,'Offline failures keep the queue');
+await assert.rejects(flushPending(storage,key,async()=>{throw new Error('response lost');}));assert.equal(readPending(storage,key)[0].mutation,'retry-token');
+const ids=[];await flushPending(storage,key,async item=>{ids.push(item.mutation);return 'saved';});assert.deepEqual(ids,['retry-token']);assert.equal(readPending(storage,key).length,0);
+storage.setItem(key,JSON.stringify([p]));await flushPending(storage,key,async()=> 'conflict');assert.equal(readPending(storage,key)[0].problem,'conflict');let sent=0;await flushPending(storage,key,async()=>{sent++;return 'saved';});assert.equal(sent,0,'Conflicts require an explicit resolution');
+assert.equal(overlayPending([{...wish,title:'Cloud version'},{id:'wish-2'}],readPending(storage,key))[0].title,'Local thought');assert.equal(overlayPending([{...wish,title:'Cloud version'}],readPending(storage,key)).length,1);
+storage.setItem('broken','not json');assert.throws(()=>readPending(storage,'broken'),'Never silently discard corrupted queue');
+const full={getItem:()=>JSON.stringify([p]),setItem:()=>{throw Error('quota');}};await assert.rejects(flushPending(full,key,async()=> 'saved'));assert.equal(readPending(full,key).length,1,'Storage failure still permits idempotent retry');
+console.log('Sync: account/space isolation, offline retention, lost ACK, stable retry, conflicts, overlay and quota failure passed.');
