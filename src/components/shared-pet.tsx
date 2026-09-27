@@ -129,17 +129,15 @@ function PetHome({ spaceId, zh }: { spaceId: string; zh: boolean }) {
     if (succeeded && mounted.current) { window.dispatchEvent(new Event('pet-updated')); await load(); }
   }
 
-  async function care(action: Action, replay = false) {
+  async function care(action: Action) {
     if (!supabase || writing.current || !pet) return;
     writing.current = true; requestId.current++; setBusy(true); setError(''); setNotice('');
     let succeeded = false;
     try {
-      const { data, error: careError } = await supabase.rpc('care_for_named_pet', { p_space: spaceId, p_pet:pet.id, p_action: action });
+      const { error: careError } = await supabase.rpc('care_for_named_pet', { p_space: spaceId, p_pet:pet.id, p_action: action });
       if (careError) throw careError;
       succeeded = true;
-      if (mounted.current) setNotice(data
-        ? (zh ? `${pet.name}收到了你的爱，成长值 +10 ♡` : `${pet.name} feels loved. +10 growth ♡`)
-        : (replay ? (zh ? '玩得好开心！今天的陪玩成长已领取，可以继续玩哦。' : 'That was fun! Today’s play growth is already collected. Keep playing!') : (zh ? '今天已经做过这项互动啦，明天再来吧。' : 'You have done this today. Come back tomorrow.')));
+      if (mounted.current) setNotice(zh ? `${pet.name}很开心你来陪它 ♡` : `${pet.name} is happy you’re here ♡`);
     } catch {
       if (mounted.current) setError(zh ? '互动暂未确认，请重试；重复操作不会重复计分。' : 'Could not confirm this interaction. Retrying will not count it twice.');
     } finally {
@@ -152,7 +150,6 @@ function PetHome({ spaceId, zh }: { spaceId: string; zh: boolean }) {
   const journal=allJournal.filter(row=>row.pet_id===pet?.id);
   const level = pet ? Math.floor(pet.experience / 100) + 1 : 1;
   const progress = pet ? pet.experience % 100 : 0;
-  const nextReset = new Date(`${today}T00:00:00Z`); nextReset.setUTCDate(nextReset.getUTCDate() + 1);
   return <section className="life-section pet-home" aria-label={zh ? '我们的宠物' : 'Our pet'}>
     <div className="life-section-head"><div><span className="eyebrow">A LITTLE LOVE, EVERY DAY</span><h2>{zh ? '一起，把它宠大' : 'A little friend, raised together'}</h2></div><button className="text-action" disabled={busy} onClick={() => void load()}><RefreshCw size={14}/>{zh ? '刷新' : 'Refresh'}</button></div>
     {error && <p role="alert" className="pet-error">{error}</p>}
@@ -162,7 +159,7 @@ function PetHome({ spaceId, zh }: { spaceId: string; zh: boolean }) {
     {!loaded ? <p className="life-empty">{error ? (zh ? '点击刷新，再来看看它。' : 'Refresh to try again.') : (zh ? '正在布置宠物的小家…' : 'Getting your pet’s home ready…')}</p> : !pet || adopting ?
       <form className="pet-adoption" onSubmit={saveName}>
         <div className="pet-scene"><PetPortrait species={species} appearance={appearance}/><p>{zh ? '一只小可爱，两个人的牵挂' : 'One little friend. Two loving hearts.'}</p></div>
-        <div className="pet-adoption-form"><h3>{zh ? (pets.length?'给它找个新伙伴':'领养你们的第一只宠物') : 'Welcome a new friend'}</h3><p className="life-muted">{zh ? '一起取名字、喂食、陪玩，把每天的小小陪伴，变成它的成长。' : 'Name, feed and play with your pet. Your everyday care helps it grow.'}</p>
+        <div className="pet-adoption-form"><h3>{zh ? (pets.length?'给它找个新伙伴':'领养你们的第一只宠物') : 'Welcome a new friend'}</h3><p className="life-muted">{zh ? '取个名字，想起来就来摸摸、喂食或玩一会儿。' : 'Give them a name. Drop in for a cuddle or a little play whenever you like.'}</p>
           <fieldset className="pet-species"><legend>{zh ? '想和谁一起生活？' : 'Who will join your home?'}</legend>{PET_SPECIES.map(value => <button type="button" key={value.id} disabled={busy} aria-pressed={species === value.id} onClick={() => { setSpecies(value.id); setAppearance(PET_VARIETIES.find(p => p.species === value.id)!.id); }}>{value.emoji} {zh ? value.zh : value.en}</button>)}</fieldset>
           <fieldset className="pet-varieties"><legend>{zh ? '选一个喜欢的模样' : 'Choose their look'}</legend><div>{PET_VARIETIES.filter(value => value.species === species).map(value => <button type="button" key={value.id} disabled={busy} aria-pressed={appearance === value.id} onClick={() => setAppearance(value.id)}><img src={petImage(species,value.id)} alt=""/><strong>{zh ? value.zh : value.en}</strong></button>)}</div></fieldset>
           <label className="pet-name-label">{zh ? '宠物名字' : 'Pet name'}<input required maxLength={24} value={name} disabled={busy} placeholder={zh ? '比如：汤圆、Mochi' : 'For example, Mochi'} onChange={e => setName(e.target.value)}/></label>
@@ -171,19 +168,22 @@ function PetHome({ spaceId, zh }: { spaceId: string; zh: boolean }) {
           {pets.length>0&&<button type="button" className="text-action" disabled={busy} onClick={()=>setAdopting(false)}>{zh?'暂时不领养':'Cancel'}</button>}
         </div>
       </form> : <>
-        <div className="pet-card"><div className="pet-scene"><span className="pet-level">Lv. {level}</span><PetCarry petId={pet.id} spaceId={spaceId} zh={zh}><PetPortrait species={pet.species} appearance={pet.appearance} happy={!!notice} mood={pose}/></PetCarry><div className="pet-pose-picker" role="group" aria-label={zh?"宠物姿态":"Pet poses"}>{PET_POSES.map(item=><button type="button" key={item.mood} aria-pressed={pose===item.mood} onClick={()=>{setNotice('');setPose(item.mood);}}>{item.emoji} {pet.species==='cat'&&item.mood==='sit'?(zh?'乖乖等你':'Wait here'):(zh?item.zh:item.en)}</button>)}</div><p>{zh ? '有你们在，每天都很开心' : 'Every day is happier with you two'}</p></div>
+        <div className="pet-card"><div className="pet-scene"><PetCarry petId={pet.id} spaceId={spaceId} zh={zh}><PetPortrait species={pet.species} appearance={pet.appearance} happy={!!notice} mood={pose}/></PetCarry><div className="pet-pose-picker" role="group" aria-label={zh?"宠物姿态":"Pet poses"}>{PET_POSES.map(item=><button type="button" key={item.mood} aria-pressed={pose===item.mood} onClick={()=>{setNotice('');setPose(item.mood);}}>{item.emoji} {pet.species==='cat'&&item.mood==='sit'?(zh?'乖乖等你':'Wait here'):(zh?item.zh:item.en)}</button>)}</div><p>{zh ? '有你们在，每天都很开心' : 'Every day is happier with you two'}</p></div>
           <div className="pet-details"><div className="pet-title"><h3>{pet.name}</h3><button className="icon-button" disabled={busy} aria-label={zh ? '修改宠物名字' : 'Rename pet'} onClick={() => { setName(pet.name); setRenaming(true); }}><Pencil size={15}/></button><button type="button" className="icon-button pet-delete-trigger" disabled={busy} aria-label={zh ? `删除宠物${pet.name}` : `Delete pet ${pet.name}`} onClick={() => { setDeleteError(''); setDeleting(pet); }}><Trash2 size={15}/></button></div>
             <p className="pet-variety-name">{petEmoji(pet.species)} {zh ? petVariety(pet.species,pet.appearance).zh : petVariety(pet.species,pet.appearance).en}</p>
             <p className="life-muted">{zh ? (level < 3 ? '初来乍到的小宝贝' : level < 6 ? '越来越亲密的小伙伴' : '你们最默契的家人') : (level < 3 ? 'Your sweet new arrival' : level < 6 ? 'Your growing little companion' : 'One of the family')}</p>
-            <div className="pet-growth-label"><span><Sparkles size={14}/> {zh ? '共同成长' : 'Growing together'}</span><span>{progress} / 100</span></div><progress max={100} value={progress} aria-label={zh ? '升到下一级的成长值' : 'Growth toward next level'}/>
-            <p className="life-muted">{zh ? `再积累 ${100 - progress} 点成长值，升到 Lv. ${level + 1}` : `${100 - progress} more growth to reach Lv. ${level + 1}`}</p>
-            <div className="pet-care-actions">{actions.map(action => { const done = journal.some(row => row.user_id === userId && row.care_day === today && row.action === action.id); return <button key={action.id} disabled={busy || done} onClick={() => void care(action.id)}><span aria-hidden="true">{action.emoji}</span><strong>{zh ? action.zh : action.en}</strong><small>{done ? (zh ? '今天已完成 ✓' : 'Done today ✓') : '+10'}</small></button>; })}</div>
-            <p className="life-muted">{zh ? '每人每天每项一次；没来照顾也不会扣分。' : 'Each of you can do each action once daily. No penalties for days away.'}<br/>{zh ? '下次互动重置：' : 'Next daily reset: '}{nextReset.toLocaleString(zh ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+            <div className="pet-care-actions">{actions.map(action => <button key={action.id} disabled={busy} onClick={() => void care(action.id)}><span aria-hidden="true">{action.emoji}</span><strong>{zh ? action.zh : action.en}</strong></button>)}</div>
+            <p className="life-muted">{zh ? '想来就来，几天没见也不会扣分。' : 'Drop in whenever you like. No penalties for days away.'}</p>
+
           </div>
         </div>
-        <PetPlayground key={pet.id} species={pet.species} appearance={pet.appearance} name={pet.name} zh={zh} busy={busy} onComplete={() => care('play', true)}/>
+        <PetPlayground key={pet.id} species={pet.species} appearance={pet.appearance} name={pet.name} zh={zh} busy={busy} onComplete={() => care('play')}/>
+        <details className="pet-optional-records"><summary>{zh ? '看看成长与陪伴记录' : 'Growth & moments together'}</summary>
+            <div className="pet-growth-label"><span><Sparkles size={14}/> {zh ? '共同成长' : 'Growing together'}</span><span>{progress} / 100</span></div><progress max={100} value={progress} aria-label={zh ? '升到下一级的成长值' : 'Growth toward next level'}/>
+            <p className="life-muted">{zh ? `再积累 ${100 - progress} 点成长值，升到 Lv. ${level + 1}` : `${100 - progress} more growth to reach Lv. ${level + 1}`}</p>
         <div className="pet-together"><h3>{zh ? '今天的共同照顾' : 'Today’s care, from both of you'}</h3><div className="pet-member-grid">{members.map(member => <div className="pet-member" key={member.user_id}><MiniAvatar member={member}/><div><strong>{member.display_name || (zh ? '另一半' : 'Partner')}{member.user_id === userId ? (zh ? '（你）' : ' (you)') : ''}</strong><span>{actions.map(action => { const done = journal.some(row => row.user_id === member.user_id && row.care_day === today && row.action === action.id); return <small key={action.id} className={done ? 'pet-done' : ''}>{action.emoji} {zh ? action.zh : action.en}{done ? ' ✓' : ' ·'}</small>; })}</span></div></div>)}</div></div>
         <div className="pet-journal"><h3>{zh ? '被爱着的小日常' : 'Little moments of love'}</h3>{!journal.length ? <p className="life-empty">{zh ? '从第一个抱抱开始，写下你们的共同日常。' : 'Start your shared story with a first cuddle.'}</p> : <ol>{journal.slice(0, 12).map(row => { const member = members.find(m => m.user_id === row.user_id), action = actions.find(a => a.id === row.action); return <li key={row.id}><span className="pet-journal-icon" aria-hidden="true">{action?.emoji}</span><div><p><strong>{member?.display_name || (zh ? '另一半' : 'Partner')}</strong> {zh ? action?.pastZh : action?.pastEn}</p><time dateTime={row.created_at}>{new Date(row.created_at).toLocaleString(zh ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></div><small>+10</small></li>; })}</ol>}</div>
+        </details>
       </>}
     {deleting && <LifeModal title={zh ? `删除「${deleting.name}」？` : `Delete ${deleting.name}?`} onClose={() => { if (!busy) setDeleting(null); }}>
       <div className="pet-delete-confirm"><p>{zh ? '这只宠物会从你们的共同小窝中移除，成长值和全部照顾记录也会永久删除，双方都会看到变化。此操作无法撤销。' : 'This pet, their growth and all care records will be permanently removed from your shared home for both partners. This cannot be undone.'}</p>
