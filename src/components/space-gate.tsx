@@ -59,40 +59,47 @@ export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange, bac
     const client = supabase;
     const queryToken = new URLSearchParams(window.location.search).get("invite");
     if (queryToken) setInviteInput(queryToken);
-    client.auth.getUser().then(({ data }) => {
-      setUser(data.user);
-      setAuthReady(true);
-    });
+    // A locally persisted session may display this account's cache offline;
+    // every remote read/write is still checked by Supabase RLS.
+    let active=true;
+    client.auth.getSession().then(({data})=>{if(active){setUser(data.session?.user??null);setAuthReady(true);}});
     const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
       setAuthReady(true);
     });
-    return () => subscription.unsubscribe();
+    return () => {active=false;subscription.unsubscribe();};
   }, []);
 
+  const currentUser=useRef(user?.id);currentUser.current=user?.id;
   const loadSpace = useCallback(async (userId: string) => {
     if (!supabase) return;
-    setSpaceReady(false);
+    const cacheKey=`wish-together:space:v1:${userId}`;
+    if(!navigator.onLine){try{const cached=JSON.parse(localStorage.getItem(cacheKey)||'null');if(cached&&typeof cached.id==='string'&&typeof cached.name==='string'&&['owner','partner'].includes(cached.role)){setSpace(cached);setSpaceUserId(userId);setSpaceReady(true);return;}}catch{}}
     const { data: membership, error: membershipError } = await supabase
       .from("space_members").select("space_id, role").eq("user_id", userId).maybeSingle();
+    if(currentUser.current!==userId)return;
     if (membershipError) {
       setError(messages[locale].spaceLoadError);
       setSpaceReady(true);
       return;
     }
     if (!membership) {
+      localStorage.removeItem(cacheKey);
       setSpace(null);
       setSpaceReady(true);
       return;
     }
     const { data: details, error: detailsError } = await supabase
       .from("couple_spaces").select("id, name, signature, together_since").eq("id", membership.space_id).single();
+    if(currentUser.current!==userId)return;
     if (detailsError || !details) {
       setError(messages[locale].spaceLoadError);
       setSpaceReady(true);
       return;
     }
-    setSpace({ id: details.id, name: details.name, signature: details.signature, together_since: details.together_since, role: membership.role });
+    const next={ id: details.id, name: details.name, signature: details.signature, together_since: details.together_since, role: membership.role };
+    setSpace(next);
+    try{localStorage.setItem(cacheKey,JSON.stringify(next));}catch{}
     setSpaceUserId(userId);
     setSpaceReady(true);
   }, [locale]);
@@ -105,6 +112,7 @@ export function SpaceGate({ children, locale, onLocaleChange, onSpaceChange, bac
     }
   }, [user, loadSpace]);
 
+  useEffect(()=>{const online=()=>{if(user)void loadSpace(user.id);};window.addEventListener('online',online);return()=>window.removeEventListener('online',online);},[user,loadSpace]);
   useEffect(() => {
     if (authReady && spaceReady) onSpaceChange(space?.id ?? null);
   }, [authReady, spaceReady, space?.id, onSpaceChange]);

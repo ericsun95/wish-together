@@ -5,6 +5,7 @@ export function coordinates(value: unknown): Coordinates | null {
   return Number.isFinite(p.latitude) && Number.isFinite(p.longitude) && Math.abs(p.latitude) <= 90 && Math.abs(p.longitude) <= 180 ? { latitude: p.latitude, longitude: p.longitude } : null;
 }
 export type WishDraft = {
+  baseVersion?: number | null;
   editingId: string | null; title: string; note: string; url: string; address: string;
   category: string; status: "wanted" | "planned" | "done"; plannedDate: string; completionNote: string;
   location: Coordinates | null; checklist: { id: string; label: string; completed: boolean; position: number }[];

@@ -11,10 +11,11 @@
     "test:room": "node scripts/test-pet-room.mjs",
     "test:adventure": "node scripts/test-adventure.mjs",
     "test:life": "node scripts/test-life.mjs",
-    "test:wishes": "node scripts/test-wish-drafts.mjs"
+    "test:wishes": "node scripts/test-wish-drafts.mjs && node scripts/test-wish-sync.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
+    "fflate": "0.8.2",
     "leaflet": "1.9.4",
     "lucide-react": "^0.468.0",
     "next": "^15.5.0",
