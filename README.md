@@ -49,3 +49,9 @@ Run `pnpm test:life` for date and random-selection edge cases. `pnpm test:db` ch
 - Shared wish saves use the `save_wish` transaction and expected version, including checklist changes. Conflicts preserve local content for comparison or saving as a new wish. Local queues/caches are scoped by account and space; cloud permissions are still enforced by RLS. Clearing browser storage removes unsynced local content, so export it first.
 
 Validation: `npm run test:wishes` includes offline queue retention, lost acknowledgements, retries, scope isolation and storage failures; `npm run test:db` covers version conflicts, atomic rollback, idempotent creates and outsider denial.
+
+### Returning, remembering and organizing
+
+- The current browser tab remembers the selected section, each wish list's filters, timeline filters, album page and reading position, scoped to the signed-in account and space. Closing wish/photo details returns to the surrounding content; a detail opened from search returns to the same query/results. Navigation memory is kept in session storage.
+- Dates & memories → Timeline collects existing completed wishes, ready album photos and original milestone dates by month. Future entries and removed wishes are excluded. Old completed wishes without a recorded completion time stay in an undated group. No new journaling step is required.
+- More → Organize wishes offers explicit selection and category/completion/recoverable-removal actions. The removed list also supports bulk restore. Select-current-results does not include hidden filtered records or pending changes. Shared batches are durably queued together on the device, then saved individually through the existing version-checked RPC; each conflict remains recoverable. There is no cross-wish server transaction or permanent deletion.

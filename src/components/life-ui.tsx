@@ -6,9 +6,10 @@ export function LifeModal({ title, onClose, children }: { title:string; onClose:
   const ref=useRef<HTMLDivElement>(null), id=useId();
   useEffect(()=>{
     const previous=document.activeElement as HTMLElement | null;
-    ref.current?.focus();
+    const scroll=window.scrollY;
+    ref.current?.focus({preventScroll:true});
     const old=document.body.style.overflow; document.body.style.overflow='hidden';
-    return ()=>{document.body.style.overflow=old;previous?.focus();};
+    return ()=>{document.body.style.overflow=old;previous?.focus({preventScroll:true});requestAnimationFrame(()=>window.scrollTo({top:scroll,behavior:'auto'}));};
   },[]);
   return <div className="dialog-backdrop life-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)onClose();}}>
     <div className="dialog life-dialog" role="dialog" aria-modal="true" aria-labelledby={id} ref={ref} tabIndex={-1} onKeyDown={e=>{

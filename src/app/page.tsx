@@ -4,6 +4,11 @@ import "./wish-editor.css";
 import "./mobile.css";
 import "./relaxed.css";
 import "./everyday.css";
+import "./timeline-batch.css";
+import { useNavigationMemory } from '@/components/navigation-memory';
+import { navigationKey } from '@/lib/navigation-memory';
+import { BatchToolbar } from '@/components/wish-batch';
+import { batchChanges, type BatchAction } from '@/lib/wish-batch';
 import { useWishSync, SyncStatus } from '@/components/wish-sync';
 import { GlobalSearch } from '@/components/global-search';
 import { ShareCard, type ShareContent } from '@/components/share-card';
@@ -20,7 +25,7 @@ import { coordinates, readDrafts, writeDraft, type Coordinates, type WishDraft }
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import { ArrowUpRight, Compass, Camera, Check, Filter, Heart, LayoutDashboard, Link2, ListPlus, Map, MapPin, PawPrint, MessageCircle, Palette, Pencil, Plus, Search, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Compass, Camera, Check, Filter, Heart, LayoutDashboard, Link2, ListPlus, MapPin, PawPrint, MessageCircle, Palette, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import { prepareBackgroundPhoto } from "@/lib/photo";
 import { SharedPet } from "@/components/shared-pet";
 import { LifeDashboard } from "@/components/life-dashboard";
@@ -94,9 +99,7 @@ export default function Home() {
   const [spaceId, setSpaceId] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [experienceId, setExperienceId] = useState<string | null>(null);
-  const [view, setView] = useState<View>("wishes");
-  const [statusFilter, setStatusFilter] = useState<"all" | WishStatus>("all");
-  const [categoryFilter, setCategoryFilter] = useState("all");
+
   const [adding, setAdding] = useState(false);
   const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [backgroundPhoto, setBackgroundPhoto] = useState<string | null>(null);
@@ -125,16 +128,33 @@ export default function Home() {
   const [checklistDraft, setChecklistDraft] = useState<ChecklistItem[]>([]);
   const [error, setError] = useState("");
   const [baseVersion,setBaseVersion]=useState<number|null>(null);
+  const navigationScope=draftUser&&(!supabase||spaceId)?navigationKey(draftUser,spaceId||'local'):null;
+  const navigation=useNavigationMemory(navigationScope);
+  const view=navigation.state.view;
+  const filterView=view==='done'?'done':'wishes';
+  const statusFilter=navigation.state.filters[filterView].status as 'all'|WishStatus;
+  const categoryFilter=navigation.state.filters[filterView].category;
+  const setView=(next:View)=>navigation.update({view:next});
+  const setStatusFilter=(status:'all'|WishStatus)=>navigation.update({filters:{...navigation.state.filters,[filterView]:{...navigation.state.filters[filterView],status}}});
+  const setCategoryFilter=(category:string)=>navigation.update({filters:{...navigation.state.filters,[filterView]:{...navigation.state.filters[filterView],category}}});
+  const clearFilters=()=>navigation.update({filters:{...navigation.state.filters,[filterView]:{status:'all',category:'all'}}});
+  const searchReturn=useRef(false);
+  const editorOrigin=useRef<HTMLElement|null>(null);
+  const [batchTarget,setBatchTarget]=useState<'active'|'removed'|null>(null),[selectedIds,setSelectedIds]=useState<string[]>([]),[batchBusy,setBatchBusy]=useState(false),[batchNotice,setBatchNotice]=useState('');
+  const batchLock=useRef(false),currentNavigationScope=useRef(navigationScope);currentNavigationScope.current=navigationScope;
+  useEffect(()=>{setSelectedIds([]);setBatchNotice('');if(view!=='wishes'&&view!=='done')setBatchTarget(null);},[view,statusFilter,categoryFilter,navigationScope,batchTarget]);
+  useEffect(()=>{if(!adding)return;const scroll=window.scrollY,overflow=document.body.style.overflow;document.body.style.overflow='hidden';return()=>{document.body.style.overflow=overflow;if(editorOrigin.current?.isConnected)editorOrigin.current.focus({preventScroll:true});requestAnimationFrame(()=>window.scrollTo({top:scroll,behavior:'auto'}));};},[adding]);
   const sync=useWishSync(draftUser,spaceId,locale==='zh-CN');
   const displayedWishes=sync.overlay(allWishes), wishes=displayedWishes.filter(w=>!w.deletedAt), removedWishes=displayedWishes.filter(w=>w.deletedAt);
   const prefs=useLayoutPreferences();
+  const [moreDialog,setMoreDialog]=useState(false);
   const [searchOpen,setSearchOpen]=useState(false),[settingsOpen,setSettingsOpen]=useState(false),[backupOpen,setBackupOpen]=useState(false);
   const [share,setShare]=useState<ShareContent|null>(null),[memoryId,setMemoryId]=useState<string|null>(null),[inspected,setInspected]=useState<Wish|null>(null);
   const [partnerNotice,setPartnerNotice]=useState('');
   const versions=useRef<Record<string,number>>({});
   const loadedWishes=useRef(false);
   const cacheKey=draftUser&&spaceId?`wish-together:cache:v1:${draftUser}:${spaceId}`:null;
-  useEffect(()=>{versions.current={};loadedWishes.current=false;setPartnerNotice('');setSearchOpen(false);setBackupOpen(false);setMemoryId(null);setShare(null);setInspected(null);if(cacheKey)setWishes(readWishes(cacheKey));},[cacheKey]);
+  useEffect(()=>{versions.current={};loadedWishes.current=false;setPartnerNotice('');setSearchOpen(false);setMoreDialog(false);setBackupOpen(false);setMemoryId(null);setShare(null);setInspected(null);searchReturn.current=false;setBatchTarget(null);if(cacheKey)setWishes(readWishes(cacheKey));},[cacheKey]);
   useEffect(()=>{if('serviceWorker' in navigator && process.env.NODE_ENV==='production')void navigator.serviceWorker.register(`${process.env.NEXT_PUBLIC_BASE_PATH||''}/sw.js`,{scope:`${process.env.NEXT_PUBLIC_BASE_PATH||''}/`}).catch(()=>{});},[]);
 
   useEffect(() => {
@@ -276,6 +296,7 @@ export default function Home() {
     return () => clearTimeout(timer);
   }, [undoId]);
   function applyDraft(draft: WishDraft) {
+    editorOrigin.current=document.activeElement as HTMLElement;
     setBaseVersion(draft.baseVersion ?? null); setEditingId(draft.editingId); setTitle(draft.title); setNote(draft.note); setUrl(draft.url);
     setAddress(draft.address); setLocation(draft.location); setCategory(draft.category); setStatus(draft.status);
     setPlannedDate(draft.plannedDate); setCompletionNote(draft.completionNote); setChecklistDraft(draft.checklist);
@@ -288,9 +309,11 @@ export default function Home() {
   function resetEditor() {
     setBaseVersion(null); setLocation(null); setTitle(""); setUrl(""); setAddress(""); setCategory(""); setNote(""); setStatus("wanted"); setPlannedDate(""); setCompletionNote("");
     setChecklistDraft([]); setEditingId(null); setError(""); setAdding(false);
+    if(searchReturn.current){searchReturn.current=false;setSearchOpen(true);}
   }
 
   function openNewWish() {
+    editorOrigin.current=document.activeElement as HTMLElement;
     const saved = draftKey ? readDrafts(localStorage, draftKey).new : null;
     if (saved) { applyDraft(saved); return; }
     resetEditor();
@@ -299,6 +322,7 @@ export default function Home() {
   }
 
   function openEditWish(wish: Wish) {
+    editorOrigin.current=document.activeElement as HTMLElement;
     if(sync.pending.some(p=>p.wish.id===wish.id)){setInspected(wish);return;}
     setBaseVersion(wish.version??null);
     const saved = draftKey ? readDrafts(localStorage, draftKey)[wish.id] : null;
@@ -380,23 +404,23 @@ export default function Home() {
     if (supabase && spaceId) {
       if(editingId&&baseVersion===null){setError(locale==='zh-CN'?'这个旧草稿没有版本记录。请保留文字后重新打开云端心愿，或另存为新心愿。':'This older draft has no version. Copy it to a new wish or reopen the cloud wish.');return;}
       if(draft.length>100||draft.some(i=>i.label.length>200)){setError(locale==='zh-CN'?'清单最多 100 项，每项最多 200 字。':'Up to 100 checklist items, 200 characters each.');return;}
-      newWish={id:editingId||crypto.randomUUID(),title:input.title,note:note.trim(),url:input.url,address:address.trim(),category:category.trim(),status,plannedDate:status==='planned'?plannedDate:'',completionNote:status==='done'?completionNote.trim():'',location,createdAt:allWishes.find(w=>w.id===editingId)?.createdAt||new Date().toISOString(),checklist:draft,version:baseVersion??undefined};
+      newWish={completedAt:status==='done'?(allWishes.find(w=>w.id===editingId)?.completedAt||new Date().toISOString()):null,id:editingId||crypto.randomUUID(),title:input.title,note:note.trim(),url:input.url,address:address.trim(),category:category.trim(),status,plannedDate:status==='planned'?plannedDate:'',completionNote:status==='done'?completionNote.trim():'',location,createdAt:allWishes.find(w=>w.id===editingId)?.createdAt||new Date().toISOString(),checklist:draft,version:baseVersion??undefined};
       await sync.enqueue(newWish,editingId?baseVersion:null);
       if(activeSpace.current!==saveScope)return;
-      finishEditor();setView(status==='done'?'done':'wishes');return;
+      finishEditor();if(!editingId)setView(status==='done'?'done':'wishes');return;
     } else {
       if (editingId) {
         if (activeSpace.current !== saveScope) return;
-        setWishes((current) => current.map((wish) => wish.id === editingId ? { ...wish, location, title: input.title, note: note.trim(), url: input.url, address: address.trim(), category: category.trim(), status, plannedDate: status === "planned" ? plannedDate : "", completionNote: status === "done" ? completionNote.trim() : "", checklist: draft } : wish));
+        setWishes((current) => current.map((wish) => wish.id === editingId ? { ...wish, completedAt:status==='done'?(wish.status==='done'?wish.completedAt||null:new Date().toISOString()):null,location, title: input.title, note: note.trim(), url: input.url, address: address.trim(), category: category.trim(), status, plannedDate: status === "planned" ? plannedDate : "", completionNote: status === "done" ? completionNote.trim() : "", checklist: draft } : wish));
         finishEditor();
         return;
       }
-      newWish = { location, id: crypto.randomUUID(), title: input.title, note: note.trim(), url: input.url, address: address.trim(), category: category.trim(), status, plannedDate: status === "planned" ? plannedDate : "", completionNote: status === "done" ? completionNote.trim() : "", createdAt: new Date().toISOString(), checklist: draft };
+      newWish = { completedAt:status==='done'?new Date().toISOString():null,location, id: crypto.randomUUID(), title: input.title, note: note.trim(), url: input.url, address: address.trim(), category: category.trim(), status, plannedDate: status === "planned" ? plannedDate : "", completionNote: status === "done" ? completionNote.trim() : "", createdAt: new Date().toISOString(), checklist: draft };
     }
     if (activeSpace.current !== saveScope) return;
     setWishes((current) => [newWish, ...current]);
     finishEditor();
-    setView("wishes");
+    if(!editingId)setView(status==='done'?'done':'wishes');
     } catch { setError(t.wishSaveError); }
     finally { wishMutation.current++; wishSaveLock.current = false; setWishSaving(false); }
   }
@@ -407,10 +431,20 @@ export default function Home() {
   }
   async function toggleWish(wish: Wish) {
     const nextStatus: WishStatus=wish.status==='done'?'wanted':'done';
-    try{await saveAction({...wish,status:nextStatus,plannedDate:''});if(nextStatus==='done')setCompletedName(wish.title);}catch{setError(t.wishSaveError);}
+    try{await saveAction({...wish,status:nextStatus,plannedDate:'',completedAt:nextStatus==='done'?new Date().toISOString():null});if(nextStatus==='done')setCompletedName(wish.title);}catch{setError(t.wishSaveError);}
   }
   async function toggleChecklist(wishId:string,item:ChecklistItem){const wish=wishes.find(w=>w.id===wishId);if(!wish)return;try{await saveAction({...wish,checklist:wish.checklist.map(i=>i.id===item.id?{...i,completed:!i.completed}:i)});}catch{setError(t.wishSaveError);}}
   async function setRemoved(id:string,removed:boolean){if(removeLock.current)return;const wish=displayedWishes.find(w=>w.id===id);if(!wish)return;removeLock.current=true;setRemoveBusy(id);try{await saveAction({...wish,deletedAt:removed?new Date().toISOString():null});setUndoId(removed?id:null);}catch{setError(t.wishSaveError);}finally{removeLock.current=false;setRemoveBusy(null);}}
+  const batchPool=(batchTarget==='removed'?removedWishes:visible).filter(w=>!sync.pending.some(p=>p.wish.id===w.id)&&(!supabase||Number.isFinite(w.version)));
+  const selected=selectedIds.filter(id=>batchPool.some(w=>w.id===id));
+  function selectWish(id:string){setSelectedIds(ids=>ids.includes(id)?ids.filter(x=>x!==id):[...ids,id]);}
+  async function applyBatch(action:BatchAction,category:string){if(batchLock.current||!selected.length)return;const scope=currentNavigationScope.current;batchLock.current=true;setBatchBusy(true);setBatchNotice('');try{const changes=batchChanges(batchPool,selected,action,category,new Date().toISOString());if(supabase)await sync.enqueueMany(changes);else{const byId=new Map(changes.map(w=>[w.id,w]));const next=allWishes.map(w=>byId.get(w.id)||w);localStorage.setItem(WISHES_KEY,JSON.stringify(next));setWishes(next);}if(currentNavigationScope.current!==scope)return;setSelectedIds([]);setBatchNotice(locale==='zh-CN'?`${changes.length} 个心愿${supabase?'已保存在此设备，正在逐条同步；冲突会单独保留。':'已更新。'}`:`${changes.length} wishes ${supabase?'saved on this device and queued; conflicts are kept separately.':'updated.'}`);}catch{if(currentNavigationScope.current===scope)setError(locale==='zh-CN'?'批量操作未保存，选择已保留。请检查待同步内容或设备空间后重试。':'Batch changes were not saved. Your selection is kept; check pending changes or storage and retry.');}finally{batchLock.current=false;setBatchBusy(false);}}
+  function batchToolbar(removed:boolean){return <BatchToolbar key={removed?'removed':'active'} count={selected.length} available={batchPool.length} removed={removed} busy={batchBusy} zh={locale==='zh-CN'} categories={categoryNames} onSelectAll={()=>setSelectedIds(batchPool.map(w=>w.id))} onClear={()=>setSelectedIds([])} onExit={()=>setBatchTarget(null)} onApply={applyBatch}/>;}
+  function moreCommands(){return <>          {sections.filter(s=>!prefs.tabs.includes(s)).map(target=><button data-section-command type="button" key={target} aria-current={view===target?'page':undefined} onClick={()=>{setView(target);}}>{sectionName(target,locale==='zh-CN')}</button>)}
+          <button data-section-command onClick={()=>{setBatchTarget('active');setTrashOpen(false);if(view!=='wishes'&&view!=='done')setView('wishes');}}>{locale==='zh-CN'?'批量整理心愿':'Organize wishes'}</button><button data-section-command onClick={()=>setSettingsOpen(true)}>{locale==='zh-CN'?'布局偏好':'Layout preferences'}</button><button data-section-command onClick={()=>setBackupOpen(true)}>{locale==='zh-CN'?'导出与备份':'Export & backup'}</button>
+          <button data-section-command type="button" onClick={() => { setTrashOpen(v => !v);  }}>{locale === "zh-CN" ? "已删除心愿" : "Removed wishes"}</button><InstallApp zh={locale === "zh-CN"}/></>;}
+  function toggleMore(){const panel=document.getElementById('extra-sections');if(window.scrollY>220&&(!panel||panel.getBoundingClientRect().bottom<180)){setMoreDialog(true);return;}setMoreOpen(!moreOpen);}
+  function closeMemory(){setMemoryId(null);if(searchReturn.current){searchReturn.current=false;setSearchOpen(true);}}
   async function deleteWish(id: string) { await setRemoved(id, true); }
 
   return (
@@ -431,17 +465,16 @@ export default function Home() {
 
         <div className="section-head relaxed-nav">
           <div className="tabs" role="tablist" aria-label={locale === "zh-CN" ? "主要栏目" : "Main sections"}>
-            {prefs.tabs.map(target=><button key={target} role="tab" aria-selected={view===target} onClick={()=>{setView(target);setStatusFilter('all');setCategoryFilter('all');}}>{sectionName(target,locale==='zh-CN')}</button>)}
+            {prefs.tabs.map(target=><button key={target} role="tab" aria-selected={view===target} onClick={()=>{setView(target);}}>{sectionName(target,locale==='zh-CN')}</button>)}
           </div>
-          <button type="button" className="secondary more-toggle" aria-expanded={moreOpen} aria-controls="extra-sections" onClick={() => setMoreOpen(!moreOpen)}>{locale === "zh-CN" ? "更多" : "More"}</button>
+          <button type="button" className="secondary more-toggle" aria-expanded={moreOpen||moreDialog} aria-controls={moreDialog?'more-dialog-sections':'extra-sections'} onClick={toggleMore}>{locale === "zh-CN" ? "更多" : "More"}</button>
           <button className="primary" type="button" onClick={openNewWish}><Plus size={18}/>{locale === "zh-CN" ? "记一个" : "Add a wish"}</button>
         </div>
         {moreOpen && <nav className="extra-sections" id="extra-sections" aria-label={locale === "zh-CN" ? "更多栏目" : "More sections"}>
-          {sections.filter(s=>!prefs.tabs.includes(s)).map(target=><button type="button" key={target} aria-current={view===target?'page':undefined} onClick={()=>{setView(target);setStatusFilter('all');setCategoryFilter('all');}}>{sectionName(target,locale==='zh-CN')}</button>)}
-          <button onClick={()=>setSettingsOpen(true)}>{locale==='zh-CN'?'布局偏好':'Layout preferences'}</button><button onClick={()=>setBackupOpen(true)}>{locale==='zh-CN'?'导出与备份':'Export & backup'}</button>
-          <button type="button" onClick={() => { setTrashOpen(v => !v);  }}>{locale === "zh-CN" ? "已删除心愿" : "Removed wishes"}</button><InstallApp zh={locale === "zh-CN"}/>
+          {moreCommands()}
         </nav>}
         {!['wishes','map','pet'].includes(view) && <p className="current-section">{view === 'done' ? (locale === 'zh-CN' ? '做过的事，慢慢收藏。' : 'Things we did, memories to keep.') : view === 'life' ? (locale === 'zh-CN' ? '纪念日与相册' : 'Dates & memories') : view === 'adventure' ? (locale === 'zh-CN' ? '一起冒险' : 'Adventures') : t.dashboard}</p>}
+        {batchTarget==='active'&&(view==='wishes'||view==='done')&&batchToolbar(false)}{batchNotice&&<p className="completion-notice" role="status">{batchNotice}</p>}
         <SyncStatus sync={sync} zh={locale==='zh-CN'} onInspect={setInspected}/>{partnerNotice&&<div className="partner-notice" role="status"><span>{partnerNotice}</span><button onClick={()=>setPartnerNotice('')} aria-label={locale==='zh-CN'?'关闭更新提示':'Dismiss update'}><X size={16}/></button></div>}
         {completedName && <p className="completion-notice" role="status">{locale === "zh-CN" ? `我们做过啦 · ${completedName}。以后也可以补照片和感想。` : `We did it · ${completedName}. Add memories whenever you like.`}</p>}
 
@@ -455,12 +488,12 @@ export default function Home() {
           </select></label>}
           {categoryNames.length > 0 && <label><span>{t.category}</span><select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
             <option value="all">{t.allCategories}</option>
-            {categoryNames.map((name) => <option key={name} value={name}>{name}</option>)}
+            {(categoryFilter!=='all'&&!categoryNames.includes(categoryFilter)?[categoryFilter,...categoryNames]:categoryNames).map(name=><option key={name} value={name}>{name}</option>)}
           </select></label>}
-          {hasFilters && <button type="button" className="clear-filters" onClick={() => { setStatusFilter("all"); setCategoryFilter("all"); }}><X size={14} />{t.clearFilters}</button>}
+          {hasFilters && <button type="button" className="clear-filters" onClick={() => { clearFilters(); }}><X size={14} />{t.clearFilters}</button>}
         </div></section>}
 
-        {view === "adventure" ? <SoloAdventure spaceId={spaceId} zh={locale==="zh-CN"} onPets={()=>setView("pet")}/> : view === "pet" ? (spaceId ? <SharedPet key={spaceId} spaceId={spaceId} zh={locale==="zh-CN"}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起养宠物。":"Sign in to raise your pet together."}</p>) : view === "life" ? (spaceId ? <LifeDashboard spaceId={spaceId} zh={locale==="zh-CN"} wishes={wishes} onWish={wish=>setExperienceId(wish.id)} onBackground={memoryBackground}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起记录纪念日和回忆。":"Sign in to share your dates and memories."}</p>) : view === "map" ? <TaskMap onEdit={id => { const wish = wishes.find(w => w.id === id); if (wish) openEditWish(wish); }} wishes={wishes} zh={locale==="zh-CN"} onDetails={spaceId?setExperienceId:undefined}/> : view === "dashboard" ? <div className="dashboard-view">
+        {view === "adventure" ? <SoloAdventure spaceId={spaceId} zh={locale==="zh-CN"} onPets={()=>setView("pet")}/> : view === "pet" ? (spaceId ? <SharedPet key={spaceId} spaceId={spaceId} zh={locale==="zh-CN"}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起养宠物。":"Sign in to raise your pet together."}</p>) : view === "life" ? <LifeDashboard key={navigationScope||'local'} spaceId={spaceId} zh={locale==='zh-CN'} wishes={wishes} onWish={wish=>spaceId?setExperienceId(wish.id):openEditWish(wish)} onMemory={setMemoryId} onBackground={memoryBackground} navigation={navigation.state} onNavigate={navigation.update}/> : view === "map" ? <TaskMap onEdit={id => { const wish = wishes.find(w => w.id === id); if (wish) openEditWish(wish); }} wishes={wishes} zh={locale==="zh-CN"} onDetails={spaceId?setExperienceId:undefined}/> : view === "dashboard" ? <div className="dashboard-view">
           <div className="metric-grid">
             <div><strong>{wishes.length}</strong><span>{t.totalWishes}</span></div>
             <div><strong>{wishes.filter((wish) => wish.status === "wanted").length}</strong><span>{t.wantedStatus}</span></div>
@@ -476,14 +509,14 @@ export default function Home() {
           <div className="empty-state">
             <div className="empty-icon"><Heart size={25} /></div>
             <h1>{hasFilters ? t.noFilterResults : view === "done" ? t.completedEmpty : t.emptyTitle}</h1>
-            {hasFilters ? <button type="button" className="text-action" onClick={() => { setStatusFilter("all"); setCategoryFilter("all"); }}>{t.clearFilters}</button> : view === "wishes" && <p>{t.emptyBody}</p>}
+            {hasFilters ? <button type="button" className="text-action" onClick={() => { clearFilters(); }}>{t.clearFilters}</button> : view === "wishes" && <p>{t.emptyBody}</p>}
             {!hasFilters && view === "wishes" && <button type="button" className="text-action" onClick={openNewWish}><Plus size={16} />{t.add}</button>}
           </div>
         ) : (
           <div className="wish-list">
             {visible.map((wish) => (
               <article className="wish-row" data-pending={sync.pending.some(p=>p.wish.id===wish.id)} key={wish.id}>
-                <div className="wish-mark"><Heart size={17} /></div>
+                <div className="wish-mark">{batchTarget==='active'?<input type="checkbox" aria-label={`${locale==='zh-CN'?'选择':'Select'} ${wish.title}`} checked={selected.includes(wish.id)} disabled={batchBusy||!batchPool.some(w=>w.id===wish.id)} onChange={()=>selectWish(wish.id)}/>:<Heart size={17}/>}</div>
                 <div className="wish-content">
                   <h2>{wish.title}</h2>
                   {spaceId && <button type="button" className="text-action wish-discuss" onClick={()=>setExperienceId(wish.id)}><MessageCircle size={14}/>{wish.status==="done"?(locale==="zh-CN"?"留言 · 回忆照片":"Comments · Memories"):(locale==="zh-CN"?"聊聊 · 按需安排":"Chat · Optional plans")}</button>}
@@ -511,22 +544,24 @@ export default function Home() {
         )}
         {error && !adding && <p className="form-error" role="alert">{error}</p>}
 
-        {trashOpen && <section className="recovery-panel" aria-label={locale === "zh-CN" ? "恢复心愿" : "Restore wishes"}><p>{locale === "zh-CN" ? "删除的心愿和关联记录会保留，可随时恢复。" : "Removed wishes and their records are kept here for recovery."}</p>{!removedWishes.length && <p>{locale === "zh-CN" ? "没有已删除的心愿" : "No removed wishes"}</p>}{removedWishes.map(w => <div key={w.id}><span>{w.title}</span><button className="secondary" disabled={!!removeBusy||sync.pending.some(p=>p.wish.id===w.id)} onClick={() => void setRemoved(w.id, false)}>{locale === "zh-CN" ? "恢复" : "Restore"}</button></div>)}</section>}
+        {trashOpen && <section className="recovery-panel" aria-label={locale === "zh-CN" ? "恢复心愿" : "Restore wishes"}>{batchTarget==='removed'?batchToolbar(true):<button className="secondary" onClick={()=>setBatchTarget('removed')}>{locale==='zh-CN'?'批量恢复':'Restore multiple'}</button>}<p>{locale === "zh-CN" ? "删除的心愿和关联记录会保留，可随时恢复。" : "Removed wishes and their records are kept here for recovery."}</p>{!removedWishes.length && <p>{locale === "zh-CN" ? "没有已删除的心愿" : "No removed wishes"}</p>}{removedWishes.map(w => <div key={w.id}>{batchTarget==='removed'&&<input type="checkbox" aria-label={`${locale==='zh-CN'?'选择':'Select'} ${w.title}`} checked={selected.includes(w.id)} disabled={batchBusy||!batchPool.some(item=>item.id===w.id)} onChange={()=>selectWish(w.id)}/>}<span>{w.title}</span><button className="secondary" disabled={!!removeBusy||sync.pending.some(p=>p.wish.id===w.id)} onClick={() => void setRemoved(w.id, false)}>{locale === "zh-CN" ? "恢复" : "Restore"}</button></div>)}</section>}
         <p className="storage-note">{supabase ? t.sharedStorage : t.localOnly}</p>
       </section>
 
-      {searchOpen&&<GlobalSearch wishes={wishes} space={spaceId} zh={locale==='zh-CN'} onClose={()=>setSearchOpen(false)} onWish={w=>{setSearchOpen(false);openEditWish(w);}} onMemory={id=>{setSearchOpen(false);setMemoryId(id);}}/>}
+      {moreDialog&&<LifeModal title={locale==='zh-CN'?'更多栏目':'More sections'} onClose={()=>setMoreDialog(false)}><nav className="extra-sections more-dialog-sections" id="more-dialog-sections" onClick={event=>{if((event.target as HTMLElement).closest('[data-section-command]'))setMoreDialog(false);}}>{moreCommands()}</nav></LifeModal>}
+      {searchOpen&&<GlobalSearch wishes={wishes} space={spaceId} zh={locale==='zh-CN'} query={navigation.state.searchQuery} onQueryChange={searchQuery=>navigation.update({searchQuery})} scroll={navigation.state.searchScroll} onScroll={searchScroll=>navigation.update({searchScroll})} onClose={()=>setSearchOpen(false)} onWish={w=>{searchReturn.current=true;setSearchOpen(false);openEditWish(w);}} onMemory={id=>{searchReturn.current=true;setSearchOpen(false);setMemoryId(id);}}/>}
       {settingsOpen&&<LayoutPreferences prefs={prefs} zh={locale==='zh-CN'} onClose={()=>setSettingsOpen(false)} onAppearance={()=>{setSettingsOpen(false);setAppearanceOpen(true);}}/>}
       {backupOpen&&<ContentBackup space={spaceId} wishes={displayedWishes} pending={sync.pending} zh={locale==='zh-CN'} onClose={()=>setBackupOpen(false)}/>}
-      {share&&<ShareCard content={share} zh={locale==='zh-CN'} onClose={()=>setShare(null)}/>}
-      {memoryId&&spaceId&&<LifeModal title={locale==='zh-CN'?'找到的回忆':'Found memory'} onClose={()=>setMemoryId(null)}><Memories spaceId={spaceId} wishes={wishes} zh={locale==='zh-CN'} initialMemoryId={memoryId} onBackground={memoryBackground}/></LifeModal>}
-      {inspected&&<LifeModal title={locale==='zh-CN'?'此设备上的版本':'Version on this device'} onClose={()=>setInspected(null)}><div className="pending-preview"><p className="life-muted">{locale==='zh-CN'?'我的待同步内容':'My pending changes'}</p><h3>{inspected.title}</h3><p>{inspected.note}</p><p>{inspected.address}</p><p>{inspected.completionNote}</p><p>{inspected.plannedDate}</p>{inspected.checklist.map(i=><p key={i.id}>{i.completed?'✓':'○'} {i.label}</p>)}</div>{allWishes.filter(w=>w.id===inspected.id).map(cloud=><div className="pending-preview cloud-preview" key={cloud.id}><p className="life-muted">{locale==='zh-CN'?'最近载入的云端版本':'Last loaded cloud version'}</p><h3>{cloud.title}</h3><p>{cloud.note}</p><p>{cloud.address}</p><p>{cloud.completionNote}</p><p>{cloud.plannedDate}</p>{cloud.checklist.map(i=><p key={i.id}>{i.completed?'✓':'○'} {i.label}</p>)}</div>)}<button className="secondary" onClick={()=>{setShare({title:inspected.title,note:inspected.note,address:inspected.address});setInspected(null);}}>{locale==='zh-CN'?'生成卡片':'Create card'}</button></LifeModal>}
+      {share&&<ShareCard content={share} zh={locale==='zh-CN'} onClose={()=>{setShare(null);if(searchReturn.current){searchReturn.current=false;setSearchOpen(true);}}}/>}
+      {memoryId&&spaceId&&<Memories key={`${spaceId}:${memoryId}`} spaceId={spaceId} wishes={wishes} zh={locale==='zh-CN'} initialMemoryId={memoryId} onInitialClose={closeMemory} onBackground={memoryBackground}/>}
+      {inspected&&<LifeModal title={locale==='zh-CN'?'此设备上的版本':'Version on this device'} onClose={()=>{setInspected(null);if(searchReturn.current){searchReturn.current=false;setSearchOpen(true);}}}><div className="pending-preview"><p className="life-muted">{locale==='zh-CN'?'我的待同步内容':'My pending changes'}</p><h3>{inspected.title}</h3><p>{inspected.note}</p><p>{inspected.address}</p><p>{inspected.completionNote}</p><p>{inspected.plannedDate}</p>{inspected.checklist.map(i=><p key={i.id}>{i.completed?'✓':'○'} {i.label}</p>)}</div>{allWishes.filter(w=>w.id===inspected.id).map(cloud=><div className="pending-preview cloud-preview" key={cloud.id}><p className="life-muted">{locale==='zh-CN'?'最近载入的云端版本':'Last loaded cloud version'}</p><h3>{cloud.title}</h3><p>{cloud.note}</p><p>{cloud.address}</p><p>{cloud.completionNote}</p><p>{cloud.plannedDate}</p>{cloud.checklist.map(i=><p key={i.id}>{i.completed?'✓':'○'} {i.label}</p>)}</div>)}<button className="secondary" onClick={()=>{setShare({title:inspected.title,note:inspected.note,address:inspected.address});setInspected(null);}}>{locale==='zh-CN'?'生成卡片':'Create card'}</button></LifeModal>}
       {spaceId && experienceId && wishes.find(w=>w.id===experienceId) && <WishExperience key={`${spaceId}:${experienceId}`} spaceId={spaceId} wish={wishes.find(w=>w.id===experienceId)!} wishes={wishes} zh={locale==="zh-CN"} onClose={()=>setExperienceId(null)} onBackground={memoryBackground}/>}
       {undoId && <div className="undo-toast" role="status"><span>{locale === "zh-CN" ? "心愿已移到已删除列表" : "Wish moved to removed list"}</span><button disabled={!!removeBusy||sync.pending.some(p=>p.wish.id===undoId)} onClick={() => void setRemoved(undoId, false)}>{locale === "zh-CN" ? "撤销" : "Undo"}</button></div>}
       {adding && <div className="dialog-backdrop">
         <div className="dialog wish-editor-dialog" onKeyDown={event => {
+          if(event.key==='Escape'&&!wishSaving){event.stopPropagation();resetEditor();return;}
           if (event.key !== "Tab") return;
-          const elements = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), a[href], summary')).filter(element => element.getClientRects().length > 0);
+          const elements = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], summary')).filter(element => element.getClientRects().length > 0);
           const first = elements[0], last = elements[elements.length - 1];
           if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
           else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
@@ -583,7 +618,7 @@ export default function Home() {
           </div>
         </div>
       </div>}
-      {spaceId && view !== "adventure" && <RoamingPet key={spaceId} spaceId={spaceId} zh={locale === "zh-CN"} onOpenHome={() => { setView('pet'); requestAnimationFrame(()=>document.querySelector('.section-head')?.scrollIntoView({block:'start'})); }}/> }
+      {spaceId && view !== "adventure" && <RoamingPet key={spaceId} spaceId={spaceId} zh={locale === "zh-CN"} onOpenHome={() => { setView('pet'); }}/> }
     </main>
     </SpaceGate>
   );

@@ -2,7 +2,7 @@ import { coordinates, type Coordinates } from './wish-drafts';
 export type SyncedWish = {
   id: string; title: string; note: string; url: string; address: string; category: string;
   status: 'wanted' | 'planned' | 'done'; plannedDate: string; completionNote: string;
-  createdAt: string; location?: Coordinates | null; deletedAt?: string | null; version?: number;
+  completedAt?: string | null; createdAt: string; location?: Coordinates | null; deletedAt?: string | null; version?: number;
   updatedBy?: string | null; updatedAt?: string;
   checklist: { id: string; label: string; completed: boolean; position: number }[];
 };
@@ -23,7 +23,7 @@ export function rowWish(row: Record<string, unknown>, items: SyncedWish['checkli
   return { id:String(row.id), title:String(row.title), note:String(row.note ?? ''), url:String(row.url ?? ''),
     address:String(row.address ?? ''), category:String(row.category ?? ''), status:row.status as SyncedWish['status'],
     plannedDate:String(row.planned_date ?? ''), completionNote:String(row.completed_note ?? ''), createdAt:String(row.created_at),
-    location:coordinates(row), deletedAt:row.deleted_at as string|null, version:Number(row.version),
+    completedAt:typeof row.completed_at==='string'?row.completed_at:null, location:coordinates(row), deletedAt:row.deleted_at as string|null, version:Number(row.version),
     updatedBy:row.updated_by as string|null, updatedAt:String(row.updated_at), checklist:items };
 }
 export async function syncLock<T>(key:string, work:()=>Promise<T>):Promise<T> {
