@@ -6,6 +6,10 @@ import "./relaxed.css";
 import "./everyday.css";
 import "./timeline-batch.css";
 import "./companion-calendar.css";
+import "./share-import.css";
+import { ShareImport } from "@/components/share-import";
+import { useShareInbox } from "@/components/share-inbox";
+import { isRedNote, type SharedWish } from "@/lib/share-import";
 import { useNavigationMemory } from '@/components/navigation-memory';
 import { navigationKey } from '@/lib/navigation-memory';
 import { BatchToolbar } from '@/components/wish-batch';
@@ -111,6 +115,7 @@ export default function Home() {
   const activeSpace = useRef(spaceId);
   activeSpace.current = spaceId;
   const [theme, setTheme] = useState<Theme>("clean");
+  const shareInbox=useShareInbox();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
@@ -324,6 +329,14 @@ export default function Home() {
   }
 
   function openNewWish(){openNewWishForDay();}
+  function importSharedWish(value:SharedWish){
+    if(!draftKey)return locale==='zh-CN'?'请等待空间准备完成。':'Wait for the space to finish loading.';
+    if(readDrafts(localStorage,draftKey).new)return locale==='zh-CN'?'请先处理已有草稿，分享文案已保留。':'Finish your existing draft first. Shared text is kept.';
+    const draft:WishDraft={baseVersion:null,editingId:null,title:value.title,note:value.note,url:value.url,address:value.address,category:'',status:'wanted',plannedDate:'',completionNote:'',location:null,checklist:[]};
+    try{writeDraft(localStorage,draftKey,'new',draft);}catch{return locale==='zh-CN'?'设备暂时无法保存草稿，请保留分享文案后重试。':'Could not save the draft on this device. Keep the shared text and retry.';}
+    shareInbox.clear();applyDraft(draft);
+  }
+
 
   function openEditWish(wish: Wish) {
     editorOrigin.current=document.activeElement as HTMLElement;
@@ -445,7 +458,7 @@ export default function Home() {
   async function applyBatch(action:BatchAction,category:string){if(batchLock.current||!selected.length)return;const scope=currentNavigationScope.current;batchLock.current=true;setBatchBusy(true);setBatchNotice('');try{const changes=batchChanges(batchPool,selected,action,category,new Date().toISOString());if(supabase)await sync.enqueueMany(changes);else{const byId=new Map(changes.map(w=>[w.id,w]));const next=allWishes.map(w=>byId.get(w.id)||w);localStorage.setItem(WISHES_KEY,JSON.stringify(next));setWishes(next);}if(currentNavigationScope.current!==scope)return;setSelectedIds([]);setBatchNotice(locale==='zh-CN'?`${changes.length} 个心愿${supabase?'已保存在此设备，正在逐条同步；冲突会单独保留。':'已更新。'}`:`${changes.length} wishes ${supabase?'saved on this device and queued; conflicts are kept separately.':'updated.'}`);}catch{if(currentNavigationScope.current===scope)setError(locale==='zh-CN'?'批量操作未保存，选择已保留。请检查待同步内容或设备空间后重试。':'Batch changes were not saved. Your selection is kept; check pending changes or storage and retry.');}finally{batchLock.current=false;setBatchBusy(false);}}
   function batchToolbar(removed:boolean){return <BatchToolbar key={removed?'removed':'active'} count={selected.length} available={batchPool.length} removed={removed} busy={batchBusy} zh={locale==='zh-CN'} categories={categoryNames} onSelectAll={()=>setSelectedIds(batchPool.map(w=>w.id))} onClear={()=>setSelectedIds([])} onExit={()=>setBatchTarget(null)} onApply={applyBatch}/>;}
   function moreCommands(){return <>          {sections.filter(s=>!prefs.tabs.includes(s)).map(target=><button data-section-command type="button" key={target} aria-current={view===target?'page':undefined} onClick={()=>{setView(target);}}>{sectionName(target,locale==='zh-CN')}</button>)}
-          <button data-section-command onClick={()=>{setBatchTarget('active');setTrashOpen(false);if(view!=='wishes'&&view!=='done')setView('wishes');}}>{locale==='zh-CN'?'批量整理心愿':'Organize wishes'}</button><button data-section-command onClick={()=>setSettingsOpen(true)}>{locale==='zh-CN'?'布局偏好':'Layout preferences'}</button><button data-section-command onClick={()=>setBackupOpen(true)}>{locale==='zh-CN'?'导出与备份':'Export & backup'}</button>
+          <button data-section-command onClick={()=>shareInbox.setOpen(true)}>{locale==='zh-CN'?'收下小红书与链接':'Import shared text'}</button><button data-section-command onClick={()=>{setBatchTarget('active');setTrashOpen(false);if(view!=='wishes'&&view!=='done')setView('wishes');}}>{locale==='zh-CN'?'批量整理心愿':'Organize wishes'}</button><button data-section-command onClick={()=>setSettingsOpen(true)}>{locale==='zh-CN'?'布局偏好':'Layout preferences'}</button><button data-section-command onClick={()=>setBackupOpen(true)}>{locale==='zh-CN'?'导出与备份':'Export & backup'}</button>
           <button data-section-command type="button" onClick={() => { setTrashOpen(v => !v);  }}>{locale === "zh-CN" ? "已删除心愿" : "Removed wishes"}</button><InstallApp zh={locale === "zh-CN"}/></>;}
   function toggleMore(){const panel=document.getElementById('extra-sections');if(window.scrollY>220&&(!panel||panel.getBoundingClientRect().bottom<180)){setMoreDialog(true);return;}setMoreOpen(!moreOpen);}
   function closeMemory(){setMemoryId(null);if(searchReturn.current){searchReturn.current=false;setSearchOpen(true);}}
@@ -497,6 +510,8 @@ export default function Home() {
           {hasFilters && <button type="button" className="clear-filters" onClick={() => { clearFilters(); }}><X size={14} />{t.clearFilters}</button>}
         </div></section>}
 
+        {view==='wishes'&&!shareInbox.raw.trim()&&<button type="button" className="text-action share-import-shortcut" onClick={()=>shareInbox.setOpen(true)}>{locale==='zh-CN'?'＋ 收下小红书 / 网页分享':'＋ Save a Xiaohongshu / web share'}</button>}
+        {shareInbox.raw.trim()&&<div className="share-import-banner"><span>{locale==='zh-CN'?'有一段分享文案，想起来再收下就好。':'Shared text is waiting whenever you are ready.'}{shareInbox.storageError&&(locale==='zh-CN'?' 当前无法保留到刷新后，请先复制备份。':' It cannot survive a reload; keep a copy.')}</span><button type="button" className="text-action" onClick={()=>shareInbox.setOpen(true)}>{locale==='zh-CN'?'查看分享':'Review share'}</button><button type="button" className="text-action" onClick={shareInbox.clear}>{locale==='zh-CN'?'清除':'Clear'}</button></div>}
         {view === "adventure" ? <SoloAdventure spaceId={spaceId} zh={locale==="zh-CN"} onPets={()=>setView("pet")}/> : view === "pet" ? (spaceId ? <SharedPet key={spaceId} spaceId={spaceId} zh={locale==="zh-CN"}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起养宠物。":"Sign in to raise your pet together."}</p>) : view === "life" ? <LifeDashboard key={navigationScope||'local'} spaceId={spaceId} zh={locale==='zh-CN'} wishes={wishes} onWish={wish=>spaceId?setExperienceId(wish.id):openEditWish(wish)} onNew={openNewWishForDay} onMemory={setMemoryId} onBackground={memoryBackground} navigation={navigation.state} onNavigate={navigation.update}/> : view === "map" ? <TaskMap onEdit={id => { const wish = wishes.find(w => w.id === id); if (wish) openEditWish(wish); }} wishes={wishes} zh={locale==="zh-CN"} onDetails={spaceId?setExperienceId:undefined}/> : view === "dashboard" ? <div className="dashboard-view">
           <div className="metric-grid">
             <div><strong>{wishes.length}</strong><span>{t.totalWishes}</span></div>
@@ -529,7 +544,7 @@ export default function Home() {
                   {wish.note && <p>{wish.note}</p>}
                   {wish.status === "done" && wish.completionNote && <p className="completion-note">{wish.completionNote}</p>}
                   {wish.address && <p className="wish-meta"><MapPin size={14} />{wish.address}</p>}
-                  {wish.url && <a href={wish.url} target="_blank" rel="noopener noreferrer"><Link2 size={14} />{new URL(wish.url).hostname}<ArrowUpRight size={14} /></a>}
+                  {wish.url && <a href={wish.url} target="_blank" rel="noopener noreferrer"><Link2 size={14} />{isRedNote(wish.url)?(locale==='zh-CN'?'回小红书看原笔记':'Open in Xiaohongshu'):new URL(wish.url).hostname}<ArrowUpRight size={14} /></a>}
                   {wish.checklist.length > 0 && <div className="wish-checklist">
                     {wish.checklist.map((item) => <label key={item.id}>
                       <input type="checkbox" checked={item.completed} disabled={sync.pending.some(p=>p.wish.id===wish.id)} onChange={() => void toggleChecklist(wish.id, item)} />
@@ -561,6 +576,7 @@ export default function Home() {
       {inspected&&<LifeModal title={locale==='zh-CN'?'此设备上的版本':'Version on this device'} onClose={()=>{setInspected(null);if(searchReturn.current){searchReturn.current=false;setSearchOpen(true);}}}><div className="pending-preview"><p className="life-muted">{locale==='zh-CN'?'我的待同步内容':'My pending changes'}</p><h3>{inspected.title}</h3><p>{inspected.note}</p><p>{inspected.address}</p><p>{inspected.completionNote}</p><p>{inspected.plannedDate}</p>{inspected.checklist.map(i=><p key={i.id}>{i.completed?'✓':'○'} {i.label}</p>)}</div>{allWishes.filter(w=>w.id===inspected.id).map(cloud=><div className="pending-preview cloud-preview" key={cloud.id}><p className="life-muted">{locale==='zh-CN'?'最近载入的云端版本':'Last loaded cloud version'}</p><h3>{cloud.title}</h3><p>{cloud.note}</p><p>{cloud.address}</p><p>{cloud.completionNote}</p><p>{cloud.plannedDate}</p>{cloud.checklist.map(i=><p key={i.id}>{i.completed?'✓':'○'} {i.label}</p>)}</div>)}<button className="secondary" onClick={()=>{setShare({title:inspected.title,note:inspected.note,address:inspected.address});setInspected(null);}}>{locale==='zh-CN'?'生成卡片':'Create card'}</button></LifeModal>}
       {spaceId && experienceId && wishes.find(w=>w.id===experienceId) && <WishExperience key={`${spaceId}:${experienceId}`} spaceId={spaceId} wish={wishes.find(w=>w.id===experienceId)!} wishes={wishes} zh={locale==="zh-CN"} onClose={()=>setExperienceId(null)} onBackground={memoryBackground}/>}
       {undoId && <div className="undo-toast" role="status"><span>{locale === "zh-CN" ? "心愿已移到已删除列表" : "Wish moved to removed list"}</span><button disabled={!!removeBusy||sync.pending.some(p=>p.wish.id===undoId)} onClick={() => void setRemoved(undoId, false)}>{locale === "zh-CN" ? "撤销" : "Undo"}</button></div>}
+      {shareInbox.open&&<ShareImport key={draftKey||'waiting'} zh={locale==='zh-CN'} raw={shareInbox.raw} onRaw={shareInbox.update} onClose={()=>shareInbox.setOpen(false)} ready={!!draftKey} wishes={wishes} hasDraft={!!(draftKey&&readDrafts(localStorage,draftKey).new)} onImport={importSharedWish} onExisting={w=>{shareInbox.clear();openEditWish(w);}} onDraft={()=>{shareInbox.setOpen(false);openNewWish();}}/>}
       {adding && <div className="dialog-backdrop">
         <div className="dialog wish-editor-dialog" onKeyDown={event => {
           if(event.key==='Escape'&&!wishSaving){event.stopPropagation();resetEditor();return;}
@@ -574,6 +590,7 @@ export default function Home() {
           <form noValidate onSubmit={saveWish} aria-busy={wishSaving}>
             <fieldset className="wish-editor-body" disabled={wishSaving}>
             <p className="draft-state" role="status">{draftError ? (locale === "zh-CN" ? "设备存储不可用，草稿暂未保存" : "Device storage unavailable. Draft not saved.") : draftKey ? (locale === "zh-CN" ? "草稿自动保存在此设备，关闭后可继续编辑" : "Draft saved on this device. Close and continue later.") : (locale === "zh-CN" ? "正在准备草稿保存…" : "Preparing draft storage…")}</p><p className="wish-editor-intro">{locale === "zh-CN" ? "一句话或一个链接就能保存，其他都可以以后再加。" : "A thought or a link is enough. Everything else can wait."}</p>
+            {!editingId&&<button type="button" className="text-action share-import-shortcut" onClick={()=>{resetEditor();shareInbox.setOpen(true);}}>{locale==='zh-CN'?'从小红书分享文案导入':'Import a shared Xiaohongshu message'}</button>}
             <label>{locale === "zh-CN" ? "想做什么？" : "What would you like to do?"}<input autoFocus placeholder={locale === "zh-CN" ? "写一句话，或贴一个链接" : "A thought or a link is enough"} value={title} onChange={(e) => { setTitle(e.target.value); setError(""); }} /></label>
             <section className="wish-extras"><h3>{locale === "zh-CN" ? "地点与计划 · 可选" : "Place & plans · optional"}</h3>
             <PlaceSearch value={address} onChange={value => { setAddress(value); setLocation(null); }} onSelect={setLocation} zh={locale === "zh-CN"}/>
