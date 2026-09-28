@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { appendBatch } from '@/lib/wish-batch';
 import { supabase } from '@/lib/supabase';
 import { flushPending, overlayPending, readPending, syncKey, syncLock, type PendingWish, type SyncedWish } from '@/lib/wish-sync';
 export function useWishSync(user:string|null, space:string|null, zh:boolean) {
@@ -38,11 +39,12 @@ export function useWishSync(user:string|null, space:string|null, zh:boolean) {
       localStorage.setItem(key,JSON.stringify([...rows,{wish,expected,mutation:crypto.randomUUID()}]));
     });notify();void flush();
   }
+  async function enqueueMany(changes:SyncedWish[]){if(!key)throw Error('Missing account');await syncLock(key,async()=>{if(scope.current!==key)throw Error('Account changed');const next=appendBatch(readPending(localStorage,key),changes,()=>crypto.randomUUID());localStorage.setItem(key,JSON.stringify(next));});notify();void flush();}
   async function resolve(mutation:string,copy:boolean) {
     if(!key)return;
     try {await syncLock(key,async()=>{const rows=readPending(localStorage,key);localStorage.setItem(key,JSON.stringify(rows.flatMap(p=>p.mutation!==mutation?[p]:copy?[{wish:{...p.wish,id:crypto.randomUUID(),version:undefined,deletedAt:null,checklist:p.wish.checklist.map(i=>({...i,id:crypto.randomUUID()}))},expected:null,mutation:crypto.randomUUID()}]:[])));});notify();window.dispatchEvent(new Event('life-changed'));void flush();}catch{setIssue(zh?'处理失败，内容已保留。':'Could not update. Your content was kept.');}
   }
-  return {pending,offline,issue,enqueue,flush,retry,resolve,key,overlay:(w:SyncedWish[])=>overlayPending(w,pending)};
+  return {pending,offline,issue,enqueue,enqueueMany,flush,retry,resolve,key,overlay:(w:SyncedWish[])=>overlayPending(w,pending)};
 }
 export function SyncStatus({sync,zh,onInspect}:{sync:ReturnType<typeof useWishSync>;zh:boolean;onInspect:(wish:SyncedWish)=>void}) {
   if(!sync.offline&&!sync.pending.length&&!sync.issue)return null;

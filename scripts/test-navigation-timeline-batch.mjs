@@ -1,0 +1,27 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import ts from 'typescript';
+async function load(file){const source=fs.readFileSync(new URL(file,import.meta.url),'utf8');const js=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;return import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);}
+const {defaultNavigation,navigationKey,readNavigation,scrollKey}=await load('../src/lib/navigation-memory.ts');
+const entries=new Map(),storage={getItem:key=>entries.get(key)||null};
+const state=defaultNavigation();state.view='done';state.filters.wishes={status:'planned',category:'Travel'};state.filters.done={status:'all',category:'Food'};state.searchQuery='海边';state.searchScroll=220;state.lifeTab='album';state.albumPage=3;
+const key=navigationKey('alice','ours');entries.set(key,JSON.stringify({state,positions:{[scrollKey(state)]:860}}));
+const restored=readNavigation(storage,key);assert.equal(restored.state.filters.wishes.category,'Travel');assert.equal(restored.state.filters.done.category,'Food');assert.equal(restored.state.searchQuery,'海边');assert.equal(restored.state.albumPage,3);assert.equal(restored.positions[scrollKey(state)],860);
+assert.equal(readNavigation(storage,navigationKey('bob','ours')).state.searchQuery,'');assert.equal(readNavigation(storage,navigationKey('alice','other')).state.searchQuery,'');
+entries.set('bad','{broken');assert.deepEqual(readNavigation(storage,'bad').state,defaultNavigation());entries.set('bad',JSON.stringify({state:{view:'invalid',albumPage:-8,searchScroll:-10,timelineLimit:999999,filters:{done:{status:'wanted',category:'Food'}}},positions:{wishes:-12,done:'oops',life:Infinity}}));assert.equal(readNavigation(storage,'bad').state.view,'wishes');assert.equal(readNavigation(storage,'bad').state.filters.done.status,'all');assert.deepEqual(readNavigation(storage,'bad').positions,{});
+const {batchChanges,appendBatch}=await load('../src/lib/wish-batch.ts');
+const wish={id:'a',title:'Ocean',note:'Keep my note',url:'',address:'Coast',category:'Travel',status:'wanted',plannedDate:'2026-10-01',completionNote:'',createdAt:'2026-01-01',version:3,checklist:[{id:'c',label:'Book',completed:true,position:0}]};
+const other={...wish,id:'b'};const now='2026-09-27T15:00:00Z';
+const completed=batchChanges([wish,other],['a'],'done','',now);assert.equal(completed.length,1);assert.equal(completed[0].completedAt,now);assert.equal(completed[0].plannedDate,'');assert.equal(wish.status,'wanted');assert.equal(completed[0].note,wish.note);assert.deepEqual(completed[0].checklist,wish.checklist);
+assert.equal(batchChanges([{...wish,status:'done',completedAt:null}],['a'],'done','',now)[0].completedAt,null,'Do not invent dates for old completions');
+const removed=batchChanges([wish],['a'],'remove','',now);const recovered=batchChanges(removed,['a'],'restore','',now);assert.equal(recovered[0].deletedAt,null);assert.equal(recovered[0].title,wish.title);assert.equal(batchChanges([wish],['a'],'category','  Food  ',now)[0].category,'Food');
+const queue=appendBatch([],completed,()=> 'token');assert.equal(queue[0].expected,3);assert.equal(queue[0].mutation,'token');assert.throws(()=>appendBatch(queue,completed,()=> 'bad'));assert.throws(()=>appendBatch([],[{...wish,version:undefined}],()=> 'bad'));assert.equal(queue.length,1);
+const {dateOnly,timelineEntries,groupTimeline}=await load('../src/lib/memory-timeline.ts');
+const photos=[{id:'m',space_id:'s',wish_id:'a',caption:'A day by the sea',taken_on:'2026-08-10',photo_ready:true,byte_size:50},{id:'unfinished',taken_on:'2026-09-01',photo_ready:false},{id:'future',taken_on:'2027-01-01',photo_ready:true}];
+const anniversaries=[{id:'ann',title:'Our beginning',event_date:'2024-02-29',repeats_yearly:true,emoji:'♡',note:''},{id:'future',event_date:'2027-01-01'}];
+const timeline=timelineEntries([...completed,{...wish,id:'old',status:'done',completedAt:null},{...completed[0],id:'deleted',deletedAt:now},other],photos,anniversaries,'2026-09-27');
+assert.deepEqual(timeline.map(e=>e.id),['wish:a','memory:m','anniversary:ann','wish:old']);assert.equal(timeline.at(-1).date,'');assert.equal(groupTimeline(timeline).at(-1).month,'undated');assert.equal(dateOnly('2026-02-30'),'');assert.equal(dateOnly('2024-02-29'),'2024-02-29');assert.equal(dateOnly('invalid'),'');
+const instant=new Date('2026-09-01T00:30:00Z');assert.equal(dateOnly(instant.toISOString()),`${instant.getFullYear()}-${String(instant.getMonth()+1).padStart(2,'0')}-${String(instant.getDate()).padStart(2,'0')}`);
+console.log('Navigation: scoped restore, per-view filters, search, album pages and corrupt storage passed.');
+console.log('Batch: selected-only changes, preserved records, reversible removal, atomic queue preparation and version guards passed.');
+console.log('Timeline: month order, source identity, hidden/future/incomplete exclusions, leap dates, local timezone and unknown completion dates passed.');

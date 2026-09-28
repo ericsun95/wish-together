@@ -5,10 +5,13 @@ import { supabase } from '@/lib/supabase';
 import { localToday, pickWish, type LifeWish, type WishPlan } from '@/lib/life';
 import { LifeModal } from './life-ui';
 import { Anniversaries } from './anniversaries';
+import { MemoryTimeline } from './memory-timeline';
+import type { SyncedWish } from '@/lib/wish-sync';
+import type { NavigationState } from '@/lib/navigation-memory';
 import { Memories } from './memories';
-export function LifeDashboard({spaceId,zh,wishes,onWish,onBackground}:{spaceId:string;zh:boolean;wishes:LifeWish[];onWish:(wish:LifeWish)=>void;onBackground:(photo:string)=>Promise<void>}){
- const [tab,setTab]=useState<'dates'|'album'>('dates');
- return <div className="life-dashboard"><div className="life-subnav"><button aria-pressed={tab==='dates'} onClick={()=>setTab('dates')}>{zh?'💕 纪念日':'💕 Special dates'}</button><button aria-pressed={tab==='album'} onClick={()=>setTab('album')}>{zh?'📷 回忆相册':'📷 Memories'}</button></div><DateAndRandom spaceId={spaceId} zh={zh} wishes={wishes} onWish={onWish}/>{tab==='dates'?<Anniversaries spaceId={spaceId} zh={zh}/>:<Memories spaceId={spaceId} zh={zh} wishes={wishes} onBackground={onBackground}/>}</div>;
+export function LifeDashboard({spaceId,zh,wishes,onWish,onMemory,onBackground,navigation,onNavigate}:{spaceId:string|null;zh:boolean;wishes:SyncedWish[];onWish:(wish:SyncedWish)=>void;onMemory:(id:string)=>void;onBackground:(photo:string)=>Promise<void>;navigation:NavigationState;onNavigate:(patch:Partial<NavigationState>)=>void}){
+ const tab=navigation.lifeTab;
+ return <div className="life-dashboard"><div className="life-subnav">{(['timeline','dates','album'] as const).map(id=><button key={id} aria-pressed={tab===id} onClick={()=>onNavigate({lifeTab:id})}>{id==='timeline'?(zh?'回忆时间线':'Timeline'):id==='dates'?(zh?'纪念日':'Special dates'):(zh?'回忆相册':'Photo album')}</button>)}</div>{tab==='timeline'?<MemoryTimeline spaceId={spaceId} wishes={wishes} zh={zh} kind={navigation.timelineKind} year={navigation.timelineYear} limit={navigation.timelineLimit} onChange={onNavigate} onWish={onWish} onMemory={onMemory}/>:spaceId?tab==='dates'?<><DateAndRandom spaceId={spaceId} zh={zh} wishes={wishes} onWish={w=>{const wish=wishes.find(x=>x.id===w.id);if(wish)onWish(wish);}}/><Anniversaries spaceId={spaceId} zh={zh}/></>:<Memories spaceId={spaceId} zh={zh} wishes={wishes} onBackground={onBackground} rememberedPage={navigation.albumPage} onPageChange={page=>onNavigate({albumPage:page})}/>:<p>{zh?'登录共享空间后，可以记录纪念日和照片。':'Sign in to your shared space to add dates and photos.'}</p>}</div>;
 }
 export function DateAndRandom({spaceId,zh,wishes,onWish}:{spaceId:string;zh:boolean;wishes:LifeWish[];onWish:(wish:LifeWish)=>void}){
  const [plans,setPlans]=useState<WishPlan[]>([]),[open,setOpen]=useState(false),[category,setCategory]=useState(''),[picked,setPicked]=useState<LifeWish|null>(null),[error,setError]=useState('');
