@@ -11,7 +11,7 @@
     "test:room": "node scripts/test-pet-room.mjs",
     "test:adventure": "node scripts/test-adventure.mjs",
     "test:life": "node scripts/test-life.mjs",
-    "test:wishes": "node scripts/test-wish-drafts.mjs && node scripts/test-wish-sync.mjs && node scripts/test-navigation-timeline-batch.mjs && node scripts/test-companion-calendar.mjs"
+    "test:wishes": "node scripts/test-wish-drafts.mjs && node scripts/test-wish-sync.mjs && node scripts/test-navigation-timeline-batch.mjs && node scripts/test-companion-calendar.mjs && node scripts/test-share-import.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",

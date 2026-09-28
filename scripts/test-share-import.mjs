@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import ts from 'typescript';
+const file=new URL('../src/lib/share-import.ts',import.meta.url);const js=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+const {parseSharedWish,shareIdentity,isRedNote,safeShareUrl,incomingShare}=await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
+const raw='86 【周末去这家海边咖啡馆 - 小林 | 小红书】\n📍 地址：海岸路 12 号\nhttp://xhslink.com/o/AbCd，复制本条信息，打开【小红书】App查看精彩内容！';
+const result=parseSharedWish(raw);assert.equal(result.title,'周末去这家海边咖啡馆');assert.equal(result.url,'http://xhslink.com/o/AbCd');assert.equal(result.source,'xiaohongshu');assert.equal(result.address,'海岸路 12 号');assert.equal(parseSharedWish('【海边 - 日落 - 小林 | 小红书】 https://xhslink.com/o/a').title,'海边 - 日落');assert.ok(!result.note.includes('复制本条信息'));assert.ok(result.note.includes('海岸路 12 号'));
+const full='https://www.xiaohongshu.com/explore/abcdef123456abcdef123456?xsec_token=keep%2Bthis&xsec_source=pc_share';assert.equal(parseSharedWish(full).url,full);assert.equal(parseSharedWish(full).title,'小红书里的一个心愿');assert.equal(shareIdentity(full),shareIdentity('https://www.xiaohongshu.com/discovery/item/abcdef123456abcdef123456?xsec_token=another'));assert.notEqual(shareIdentity('https://xhslink.com/o/Ab'),shareIdentity('https://xhslink.com/o/aB'));
+assert.equal(isRedNote('https://xiaohongshu.com.evil.example/note'),false);assert.equal(safeShareUrl('javascript:alert(1)'), '');assert.equal(safeShareUrl('https://user:secret@example.com'), '');assert.equal(parseSharedWish('随便记一个想法').url,'');assert.equal(parseSharedWish('https://example.com/a?x=1&y=2').url,'https://example.com/a?x=1&y=2');assert.equal(parseSharedWish('https://example.com/one https://example.com/two').links.length,2);
+const query=new URLSearchParams({shared_title:'海边',shared_text:'想和你一起去',shared_url:full});assert.equal(incomingShare('?'+query),'海边\n想和你一起去\n'+full);assert.equal(incomingShare('?code=auth-code'),null);assert.equal(incomingShare('?capture=1&shared_text=hello'),'hello');
+console.log('Share import: Chinese wrappers, original signed URLs, note identity, unsafe links, multiple links and incoming shares passed.');
