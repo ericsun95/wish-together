@@ -5,6 +5,7 @@ import "./mobile.css";
 import "./relaxed.css";
 import "./everyday.css";
 import "./timeline-batch.css";
+import "./companion-calendar.css";
 import { useNavigationMemory } from '@/components/navigation-memory';
 import { navigationKey } from '@/lib/navigation-memory';
 import { BatchToolbar } from '@/components/wish-batch';
@@ -312,14 +313,17 @@ export default function Home() {
     if(searchReturn.current){searchReturn.current=false;setSearchOpen(true);}
   }
 
-  function openNewWish() {
+  function openNewWishForDay(day?: string) {
     editorOrigin.current=document.activeElement as HTMLElement;
     const saved = draftKey ? readDrafts(localStorage, draftKey).new : null;
-    if (saved) { applyDraft(saved); return; }
+    if (saved) { applyDraft(saved); if(day)setError(locale==='zh-CN'?'已恢复之前的草稿；如需安排这天，请在日期栏选择 '+day:'Your previous draft was restored. To plan this day, choose '+day+' in the date field.'); return; }
     resetEditor();
+    if(day){setStatus("planned");setPlannedDate(day);}
     setEditorScope(draftKey);
     setAdding(true);
   }
+
+  function openNewWish(){openNewWishForDay();}
 
   function openEditWish(wish: Wish) {
     editorOrigin.current=document.activeElement as HTMLElement;
@@ -407,7 +411,7 @@ export default function Home() {
       newWish={completedAt:status==='done'?(allWishes.find(w=>w.id===editingId)?.completedAt||new Date().toISOString()):null,id:editingId||crypto.randomUUID(),title:input.title,note:note.trim(),url:input.url,address:address.trim(),category:category.trim(),status,plannedDate:status==='planned'?plannedDate:'',completionNote:status==='done'?completionNote.trim():'',location,createdAt:allWishes.find(w=>w.id===editingId)?.createdAt||new Date().toISOString(),checklist:draft,version:baseVersion??undefined};
       await sync.enqueue(newWish,editingId?baseVersion:null);
       if(activeSpace.current!==saveScope)return;
-      finishEditor();if(!editingId)setView(status==='done'?'done':'wishes');return;
+      finishEditor();if(!editingId&&!(view==='life'&&navigation.state.lifeTab==='calendar'))setView(status==='done'?'done':'wishes');return;
     } else {
       if (editingId) {
         if (activeSpace.current !== saveScope) return;
@@ -420,7 +424,7 @@ export default function Home() {
     if (activeSpace.current !== saveScope) return;
     setWishes((current) => [newWish, ...current]);
     finishEditor();
-    if(!editingId)setView(status==='done'?'done':'wishes');
+    if(!editingId&&!(view==='life'&&navigation.state.lifeTab==='calendar'))setView(status==='done'?'done':'wishes');
     } catch { setError(t.wishSaveError); }
     finally { wishMutation.current++; wishSaveLock.current = false; setWishSaving(false); }
   }
@@ -473,7 +477,7 @@ export default function Home() {
         {moreOpen && <nav className="extra-sections" id="extra-sections" aria-label={locale === "zh-CN" ? "更多栏目" : "More sections"}>
           {moreCommands()}
         </nav>}
-        {!['wishes','map','pet'].includes(view) && <p className="current-section">{view === 'done' ? (locale === 'zh-CN' ? '做过的事，慢慢收藏。' : 'Things we did, memories to keep.') : view === 'life' ? (locale === 'zh-CN' ? '纪念日与相册' : 'Dates & memories') : view === 'adventure' ? (locale === 'zh-CN' ? '一起冒险' : 'Adventures') : t.dashboard}</p>}
+        {!['wishes','map','pet'].includes(view) && <p className="current-section">{view === 'done' ? (locale === 'zh-CN' ? '做过的事，慢慢收藏。' : 'Things we did, memories to keep.') : view === 'life' ? (locale === 'zh-CN' ? '日历与回忆' : 'Calendar & memories') : view === 'adventure' ? (locale === 'zh-CN' ? '一起冒险' : 'Adventures') : t.dashboard}</p>}
         {batchTarget==='active'&&(view==='wishes'||view==='done')&&batchToolbar(false)}{batchNotice&&<p className="completion-notice" role="status">{batchNotice}</p>}
         <SyncStatus sync={sync} zh={locale==='zh-CN'} onInspect={setInspected}/>{partnerNotice&&<div className="partner-notice" role="status"><span>{partnerNotice}</span><button onClick={()=>setPartnerNotice('')} aria-label={locale==='zh-CN'?'关闭更新提示':'Dismiss update'}><X size={16}/></button></div>}
         {completedName && <p className="completion-notice" role="status">{locale === "zh-CN" ? `我们做过啦 · ${completedName}。以后也可以补照片和感想。` : `We did it · ${completedName}. Add memories whenever you like.`}</p>}
@@ -493,7 +497,7 @@ export default function Home() {
           {hasFilters && <button type="button" className="clear-filters" onClick={() => { clearFilters(); }}><X size={14} />{t.clearFilters}</button>}
         </div></section>}
 
-        {view === "adventure" ? <SoloAdventure spaceId={spaceId} zh={locale==="zh-CN"} onPets={()=>setView("pet")}/> : view === "pet" ? (spaceId ? <SharedPet key={spaceId} spaceId={spaceId} zh={locale==="zh-CN"}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起养宠物。":"Sign in to raise your pet together."}</p>) : view === "life" ? <LifeDashboard key={navigationScope||'local'} spaceId={spaceId} zh={locale==='zh-CN'} wishes={wishes} onWish={wish=>spaceId?setExperienceId(wish.id):openEditWish(wish)} onMemory={setMemoryId} onBackground={memoryBackground} navigation={navigation.state} onNavigate={navigation.update}/> : view === "map" ? <TaskMap onEdit={id => { const wish = wishes.find(w => w.id === id); if (wish) openEditWish(wish); }} wishes={wishes} zh={locale==="zh-CN"} onDetails={spaceId?setExperienceId:undefined}/> : view === "dashboard" ? <div className="dashboard-view">
+        {view === "adventure" ? <SoloAdventure spaceId={spaceId} zh={locale==="zh-CN"} onPets={()=>setView("pet")}/> : view === "pet" ? (spaceId ? <SharedPet key={spaceId} spaceId={spaceId} zh={locale==="zh-CN"}/> : <p>{locale==="zh-CN"?"登录情侣空间后，就能一起养宠物。":"Sign in to raise your pet together."}</p>) : view === "life" ? <LifeDashboard key={navigationScope||'local'} spaceId={spaceId} zh={locale==='zh-CN'} wishes={wishes} onWish={wish=>spaceId?setExperienceId(wish.id):openEditWish(wish)} onNew={openNewWishForDay} onMemory={setMemoryId} onBackground={memoryBackground} navigation={navigation.state} onNavigate={navigation.update}/> : view === "map" ? <TaskMap onEdit={id => { const wish = wishes.find(w => w.id === id); if (wish) openEditWish(wish); }} wishes={wishes} zh={locale==="zh-CN"} onDetails={spaceId?setExperienceId:undefined}/> : view === "dashboard" ? <div className="dashboard-view">
           <div className="metric-grid">
             <div><strong>{wishes.length}</strong><span>{t.totalWishes}</span></div>
             <div><strong>{wishes.filter((wish) => wish.status === "wanted").length}</strong><span>{t.wantedStatus}</span></div>

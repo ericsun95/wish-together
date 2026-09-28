@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState, type PointerEvent, type KeyboardEvent } from 'react';
+import { usePetRhythm } from './pet-rhythm';
 import { petImage } from '@/lib/pet-catalog';
 import { advanceRoom, clampPosition, DEFAULT_ROOM, FURNITURE, initialActor, parseRoom, type Actor, type Furniture, type FurnitureKind } from '@/lib/pet-room';
 import type { FamilyPet } from './pet-family';
@@ -10,6 +11,7 @@ function FurnitureArt({kind}:{kind:FurnitureKind}) {
   </svg>;
 }
 export function PetRoom({pets,spaceId,zh}:{pets:FamilyPet[];spaceId:string;zh:boolean}) {
+  const rhythm=usePetRhythm();
   const [furniture,setFurniture]=useState<Furniture[]>(DEFAULT_ROOM);
   const [actors,setActors]=useState<Record<string,Actor>>({});
   const [editing,setEditing]=useState(false),[paused,setPaused]=useState(false),[selected,setSelected]=useState('');
@@ -20,24 +22,24 @@ export function PetRoom({pets,spaceId,zh}:{pets:FamilyPet[];spaceId:string;zh:bo
   useEffect(()=>{if(!ready)return;try{localStorage.setItem(key,JSON.stringify(furniture));setSaveError(false);}catch{setSaveError(true);}},[furniture,key,ready]);
   useEffect(()=>{
     if(editing||paused||!ready)return;
-    const timer=setInterval(()=>{if(!document.hidden)setActors(current=>advanceRoom(pets,current,furniture,Date.now()));},400);
+    const timer=setInterval(()=>{if(!document.hidden)setActors(current=>{if(!rhythm.sleeping)return advanceRoom(pets,current,furniture,Date.now());return Object.fromEntries(pets.map((pet,index)=>{const a=current[pet.id]||initialActor(index);return [pet.id,a.activity==='hello'&&a.until>Date.now()?a:{...a,activity:'rest',targetX:a.x,targetY:a.y}];}));});},400);
     return()=>clearInterval(timer);
-  },[pets,furniture,editing,paused,ready]);
+  },[pets,furniture,editing,paused,ready,rhythm.sleeping]);
   function move(id:string,x:number,y:number){setFurniture(items=>items.map(f=>f.id===id?{...f,...clampPosition(x,y)}:f));}
   function start(event:PointerEvent<HTMLButtonElement>,f:Furniture){if(!editing)return;event.currentTarget.setPointerCapture(event.pointerId);drag.current={id:f.id,startX:event.clientX,startY:event.clientY,x:f.x,y:f.y};setSelected(f.id);}
   function dragging(event:PointerEvent<HTMLButtonElement>){const d=drag.current,rect=floor.current?.getBoundingClientRect();if(!d||!rect)return;move(d.id,d.x+(event.clientX-d.startX)/rect.width*100,d.y+(event.clientY-d.startY)/rect.height*100);}
   function keyMove(event:KeyboardEvent<HTMLButtonElement>,f:Furniture){if(!editing)return;const delta={ArrowLeft:[-2,0],ArrowRight:[2,0],ArrowUp:[0,-2],ArrowDown:[0,2]}[event.key];if(delta){event.preventDefault();move(f.id,f.x+delta[0],f.y+delta[1]);}}
   function petHello(pet:FamilyPet,index:number){setActors(current=>({...current,[pet.id]:{...(current[pet.id]||initialActor(index)),activity:'hello',furniture:undefined,until:Date.now()+4500}}));setMessage(zh?`${pet.name}${pet.species==='dog'?'开心地蹦了蹦！':pet.species==='cat'?'蹭了蹭你的手 ♡':'凑过来和你打招呼 ♡'}`:`${pet.name} comes over to say hello ♡`);}
   const chosen=furniture.find(f=>f.id===selected);
-  return <section className="pet-room" aria-label={zh?'宠物小屋':'Pet room'}>
-    <header className="pet-room-header"><div><span className="pet-room-eyebrow">{zh?'一起生活的日常':'LITTLE EVERYDAY MOMENTS'}</span><h3>{zh?'它们的小小家':'Their little home'}</h3></div><div className="pet-room-controls"><button type="button" aria-pressed={paused} onClick={()=>setPaused(!paused)}>{paused?(zh?'▶ 继续活动':'▶ Resume'):(zh?'Ⅱ 暂停活动':'Ⅱ Pause')}</button><button type="button" aria-pressed={editing} onClick={()=>{setEditing(!editing);setSelected('');}}>{editing?(zh?'✓ 布置完成':'✓ Done'):(zh?'布置小屋':'Decorate')}</button></div></header>
+  return <section className={`pet-room pet-phase-${rhythm.phase}`} aria-label={zh?'宠物小屋':'Pet room'}>
+    <header className="pet-room-header"><div><span className="pet-room-eyebrow">{zh?'一起生活的日常':'LITTLE EVERYDAY MOMENTS'}</span><h3>{zh?'它们的小小家':'Their little home'}</h3></div><div className="pet-room-controls"><button type="button" onClick={()=>rhythm.manual?rhythm.resume():rhythm.setSleeping(!rhythm.sleeping)}>{rhythm.manual?(zh?'跟随作息':'Follow the day'):rhythm.sleeping?(zh?'轻轻叫醒':'Wake gently'):(zh?'一起午睡':'Take a nap')}</button><button type="button" aria-pressed={paused} onClick={()=>setPaused(!paused)}>{paused?(zh?'▶ 继续活动':'▶ Resume'):(zh?'Ⅱ 暂停活动':'Ⅱ Pause')}</button><button type="button" aria-pressed={editing} onClick={()=>{setEditing(!editing);setSelected('');}}>{editing?(zh?'✓ 布置完成':'✓ Done'):(zh?'布置小屋':'Decorate')}</button></div></header>
     <div ref={floor} className={`pet-room-floor ${editing?'is-editing':''} ${paused?'is-paused':''}`}>
-      <div className="pet-room-window" aria-hidden="true"><span>☁</span></div><div className="pet-room-picture" aria-hidden="true">♡</div><span className="pet-room-plant" aria-hidden="true">🌿</span>
-      <span className="pet-room-caption">{editing?(zh?'拖动家具，布置它们喜欢的角落':'Drag furniture into a cozy corner'):(zh?'阳光正好，慢慢陪伴':'A sunny spot, a little company')}</span>
+      <div className="pet-room-window" aria-hidden="true"><span>{rhythm.phase==='night'?'☾':rhythm.phase==='evening'?'☀':'☁'}</span></div><div className="pet-room-picture" aria-hidden="true">♡</div><span className="pet-room-plant" aria-hidden="true">🌿</span>
+      <span className="pet-room-caption">{editing?(zh?'拖动家具，布置它们喜欢的角落':'Drag furniture into a cozy corner'):(zh?rhythm.description.zh:rhythm.description.en)}</span>
       {furniture.map(f=><button type="button" key={f.id} className={`room-furniture room-${f.kind} ${selected===f.id?'is-selected':''}`} style={{left:`${f.x}%`,top:`${f.y}%`,zIndex:f.kind==='rug'?1:Math.round(f.y)}} disabled={!editing} aria-label={`${zh?FURNITURE.find(t=>t.kind===f.kind)!.zh:FURNITURE.find(t=>t.kind===f.kind)!.en}${editing?(zh?'，拖动或用方向键移动':', drag or use arrow keys'):''}`} aria-pressed={editing?selected===f.id:undefined} onClick={()=>setSelected(f.id)} onFocus={()=>{if(editing)setSelected(f.id);}} onPointerDown={e=>start(e,f)} onPointerMove={dragging} onPointerUp={()=>{drag.current=null;}} onPointerCancel={()=>{drag.current=null;}} onKeyDown={e=>keyMove(e,f)}><FurnitureArt kind={f.kind}/></button>)}
-      {pets.map((pet,index)=>{const a=actors[pet.id]||initialActor(index),activity=editing?'rest':a.activity;const bubble=activity==='hello'?'♡':activity==='play'?'♫':activity==='eat'?'⋯':activity==='rest'&&a.furniture&&furniture.find(f=>f.id===a.furniture)?.kind==='bed'?'z Z':'';return <button type="button" key={pet.id} className={`room-pet room-pet-${pet.species} activity-${activity}`} style={{left:`${a.x}%`,top:`${a.y}%`,zIndex:Math.round(a.y)+2}} onClick={()=>petHello(pet,index)} disabled={editing} aria-label={zh?`摸摸${pet.name}`:`Pet ${pet.name}`} data-activity={activity}><span className="room-pet-bubble" aria-hidden="true">{bubble}</span><img src={petImage(pet.species,pet.appearance)} alt="" draggable={false}/><span className="room-pet-name">{pet.name}</span></button>;})}
+      {pets.map((pet,index)=>{const a=actors[pet.id]||initialActor(index),activity=editing?'rest':a.activity;const bubble=activity==='hello'?'♡':activity==='play'?'♫':activity==='eat'?'⋯':activity==='rest'&&(rhythm.sleeping||(a.furniture&&furniture.find(f=>f.id===a.furniture)?.kind==='bed'))?'z Z':'';return <button type="button" key={pet.id} className={`room-pet room-pet-${pet.species} activity-${activity}`} style={{left:`${a.x}%`,top:`${a.y}%`,zIndex:Math.round(a.y)+2}} onClick={()=>petHello(pet,index)} disabled={editing} aria-label={zh?`摸摸${pet.name}`:`Pet ${pet.name}`} data-activity={activity}><span className="room-pet-bubble" aria-hidden="true">{bubble}</span><img src={petImage(pet.species,pet.appearance)} alt="" draggable={false}/><span className="room-pet-name">{pet.name}</span></button>;})}
     </div>
     {editing&&<div className="pet-room-editor"><div className="pet-room-shop">{FURNITURE.map(f=><button type="button" key={f.kind} disabled={furniture.length>=12} onClick={()=>{const id=`${f.kind}-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;setFurniture(items=>[...items,{id,kind:f.kind,x:48+Math.random()*8,y:52+Math.random()*8}]);setSelected(id);}}><FurnitureArt kind={f.kind}/><span>＋ {zh?f.zh:f.en}</span></button>)}</div><div className="pet-room-edit-actions"><span>{furniture.length}/12 · {zh?'选中家具后可拖动或按方向键':'Select, then drag or use arrow keys'}</span><button type="button" disabled={!chosen} onClick={()=>{setFurniture(items=>items.filter(f=>f.id!==selected));setSelected('');}}>{zh?'收起选中家具':'Put away selected'}</button></div></div>}
-    <footer><p role="status">{message||(zh?'点一点它们，打个招呼。猫咪爱休息，狗狗爱玩球。':'Tap a pet to say hello. Cats love resting; dogs love playing.')}</p><small role={saveError?'alert':undefined}>{saveError?(zh?'无法保存布局，刷新后可能丢失。':'Could not save this layout. It may be lost on reload.'):(zh?'布局自动保存在当前设备 · 小屋活动不消耗食物或增加经验':'Layout saved on this device · Room activities do not use food or award XP')}</small></footer>
+    <footer><p role="status">{message||(zh?'跟随你当地的时间，白天玩耍，夜里休息。点一点就能打招呼。':'Following your local time: play by day, rest by night. Tap to say hello.')}</p><small role={saveError?'alert':undefined}>{saveError?(zh?'无法保存布局，刷新后可能丢失。':'Could not save this layout. It may be lost on reload.'):(zh?'布局自动保存在当前设备 · 小屋活动不消耗食物或增加经验':'Layout saved on this device · Room activities do not use food or award XP')}</small></footer>
   </section>;
 }

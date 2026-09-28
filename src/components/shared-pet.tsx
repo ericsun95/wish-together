@@ -8,6 +8,7 @@ import type { LifeMember } from '@/lib/life';
 import { LifeModal, MiniAvatar } from './life-ui';
 import { PET_POSES, type PetMood } from '@/lib/pet-play';
 import { PetCarry } from './pet-carry';
+import { usePetRhythm } from './pet-rhythm';
 import { PetPortrait } from './pet-portrait';
 import { PetRoom } from './pet-room';
 import { PetPlayground } from './pet-playground';
@@ -28,7 +29,10 @@ export function SharedPet({ spaceId, zh }: { spaceId: string; zh: boolean }) {
 }
 
 function PetHome({ spaceId, zh }: { spaceId: string; zh: boolean }) {
-  const [pose,setPose]=useState<PetMood>('sit');
+  const rhythm=usePetRhythm();
+  const [chosenPose,setPose]=useState<PetMood|null>(null);
+  const pose=chosenPose||(rhythm.sleeping?'sleep':'sit');
+  useEffect(()=>setPose(null),[rhythm.phase]);
   const [pets,setPets]=useState<Pet[]>([]);
   const [selected,setSelected]=useState('');
   const [adopting,setAdopting]=useState(false);
@@ -156,7 +160,7 @@ function PetHome({ spaceId, zh }: { spaceId: string; zh: boolean }) {
     {error && <p role="alert" className="pet-error">{error}</p>}
     {notice && <p role="status" className="pet-notice">{notice}</p>}
     <p className="pet-capacity">{zh ? `小窝成员 ${pets.length} / ${MAX_PETS}` : `Family ${pets.length} / ${MAX_PETS}`}{pets.length >= MAX_PETS && (zh ? " · 小窝住满啦" : " · Your family is full")}</p>
-    {loaded && pets.length>0 && <><div className="pet-family-picker" role="group" aria-label={zh?'选择宠物':'Choose a pet'}>{pets.map(item=><button type="button" key={item.id} disabled={busy} aria-pressed={!adopting&&item.id===pet?.id} onClick={()=>{setSelected(item.id);setAdopting(false);setNotice('');setPose('sit');}}>{petEmoji(item.species)} {item.name}<small>Lv. {Math.floor(item.experience/100)+1}</small></button>)}{pets.length<MAX_PETS&&<button type="button" disabled={busy} onClick={()=>{setAdopting(true);setName('');setNotice('');}}>＋ {zh?'再领养一只':'Adopt another'}</button>}</div><PetRoom pets={pets} spaceId={spaceId} zh={zh}/></>}
+    {loaded && pets.length>0 && <><div className="pet-family-picker" role="group" aria-label={zh?'选择宠物':'Choose a pet'}>{pets.map(item=><button type="button" key={item.id} disabled={busy} aria-pressed={!adopting&&item.id===pet?.id} onClick={()=>{setSelected(item.id);setAdopting(false);setNotice('');setPose(null);}}>{petEmoji(item.species)} {item.name}<small>Lv. {Math.floor(item.experience/100)+1}</small></button>)}{pets.length<MAX_PETS&&<button type="button" disabled={busy} onClick={()=>{setAdopting(true);setName('');setNotice('');}}>＋ {zh?'再领养一只':'Adopt another'}</button>}</div><PetRoom pets={pets} spaceId={spaceId} zh={zh}/></>}
     {!loaded ? <p className="life-empty">{error ? (zh ? '点击刷新，再来看看它。' : 'Refresh to try again.') : (zh ? '正在布置宠物的小家…' : 'Getting your pet’s home ready…')}</p> : !pet || adopting ?
       <form className="pet-adoption" onSubmit={saveName}>
         <div className="pet-scene"><PetPortrait species={species} appearance={appearance}/><p>{zh ? '一只小可爱，两个人的牵挂' : 'One little friend. Two loving hearts.'}</p></div>
@@ -169,7 +173,7 @@ function PetHome({ spaceId, zh }: { spaceId: string; zh: boolean }) {
           {pets.length>0&&<button type="button" className="text-action" disabled={busy} onClick={()=>setAdopting(false)}>{zh?'暂时不领养':'Cancel'}</button>}
         </div>
       </form> : <>
-        <div className="pet-card"><div className="pet-scene"><PetCarry petId={pet.id} spaceId={spaceId} zh={zh}><PetPortrait species={pet.species} appearance={pet.appearance} happy={!!notice} mood={pose}/></PetCarry><div className="pet-pose-picker" role="group" aria-label={zh?"宠物姿态":"Pet poses"}>{PET_POSES.map(item=><button type="button" key={item.mood} aria-pressed={pose===item.mood} onClick={()=>{setNotice('');setPose(item.mood);}}>{item.emoji} {pet.species==='cat'&&item.mood==='sit'?(zh?'乖乖等你':'Wait here'):(zh?item.zh:item.en)}</button>)}</div><p>{zh ? '有你们在，每天都很开心' : 'Every day is happier with you two'}</p></div>
+        <div className="pet-card"><div className="pet-scene"><PetCarry petId={pet.id} spaceId={spaceId} zh={zh}><PetPortrait species={pet.species} appearance={pet.appearance} happy={!!notice&&pose!=='sleep'} mood={pose}/></PetCarry><div className="pet-pose-picker" role="group" aria-label={zh?"宠物姿态":"Pet poses"}>{PET_POSES.map(item=><button type="button" key={item.mood} aria-pressed={pose===item.mood} onClick={()=>{setNotice('');setPose(item.mood);}}>{item.emoji} {pet.species==='cat'&&item.mood==='sit'?(zh?'乖乖等你':'Wait here'):(zh?item.zh:item.en)}</button>)}</div><p>{rhythm.description.emoji} {zh?rhythm.description.zh:rhythm.description.en}</p>{chosenPose&&<button type="button" className="text-action" onClick={()=>{setNotice('');setPose(null);}}>{zh?'跟随自然作息':'Follow the day again'}</button>}</div>
           <div className="pet-details"><div className="pet-title"><h3>{pet.name}</h3><button className="icon-button" disabled={busy} aria-label={zh ? '修改宠物名字' : 'Rename pet'} onClick={() => { setName(pet.name); setRenaming(true); }}><Pencil size={15}/></button><button type="button" className="icon-button pet-delete-trigger" disabled={busy} aria-label={zh ? `删除宠物${pet.name}` : `Delete pet ${pet.name}`} onClick={() => { setDeleteError(''); setDeleting(pet); }}><Trash2 size={15}/></button></div>
             <p className="pet-variety-name">{petEmoji(pet.species)} {zh ? petVariety(pet.species,pet.appearance).zh : petVariety(pet.species,pet.appearance).en}</p>
             <p className="life-muted">{zh ? (level < 3 ? '初来乍到的小宝贝' : level < 6 ? '越来越亲密的小伙伴' : '你们最默契的家人') : (level < 3 ? 'Your sweet new arrival' : level < 6 ? 'Your growing little companion' : 'One of the family')}</p>
