@@ -3,7 +3,7 @@ import {useEffect,useState} from 'react';
 import {LifeModal} from './life-ui';
 export const sections=['wishes','map','pet','done','life','adventure','dashboard'] as const;
 export type Section=typeof sections[number];
-export function sectionName(view:Section,zh:boolean){return ({wishes:['心愿','Wishes'],map:['地图','Map'],pet:['小窝','Pets'],done:['做过的事','Things we did'],life:['纪念日与相册','Dates & memories'],adventure:['一起冒险','Adventures'],dashboard:['概览','Overview']}[view])[zh?0:1];}
+export function sectionName(view:Section,zh:boolean){return ({wishes:['心愿','Wishes'],map:['地图','Map'],pet:['小窝','Pets'],done:['做过的事','Things we did'],life:['日历与回忆','Calendar & memories'],adventure:['一起冒险','Adventures'],dashboard:['概览','Overview']}[view])[zh?0:1];}
 const key='wish-together:layout:v1';
 export function useLayoutPreferences(){const [tabs,setTabs]=useState<Section[]>(['wishes','map','pet']),[density,setDensity]=useState('comfortable'),[loaded,setLoaded]=useState(false),[error,setError]=useState(false);
  useEffect(()=>{try{const p=JSON.parse(localStorage.getItem(key)||'null');if(p){const valid=Array.isArray(p.tabs)?[...new Set<Section>(p.tabs.filter((x:Section)=>sections.includes(x)))]:[];if(valid.length&&valid.length<=5)setTabs(valid);if(['comfortable','compact'].includes(p.density))setDensity(p.density);}}catch{}setLoaded(true);},[]);

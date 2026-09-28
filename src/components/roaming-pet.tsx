@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent } from 'rea
 import { supabase } from '@/lib/supabase';
 import { keepPetOnScreen, PET_SIZE, PET_POSES, fullScreenPetTarget, type PetMood } from '@/lib/pet-play';
 import type { PetCarryDetail } from './pet-carry';
+import { usePetRhythm } from './pet-rhythm';
 import { PetPortrait } from './pet-portrait';
 
 import type { PetSpecies } from '@/lib/pet-catalog';
@@ -51,7 +52,8 @@ function RoamingFriend({pet,index,total,spaceId,zh,onOpenHome}:{pet:Friend;index
   const [menu, setMenu] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [paused, setPaused] = useState(false);
-  const [sleeping, setSleeping] = useState(false);
+  const rhythm=usePetRhythm();
+  const {sleeping,setSleeping}=rhythm;
   const [reduced, setReduced] = useState(true);
   const [obstructed, setObstructed] = useState(false);
   const [pageVisible, setPageVisible] = useState(true);
@@ -114,7 +116,7 @@ function RoamingFriend({pet,index,total,spaceId,zh,onOpenHome}:{pet:Friend;index
     };
     window.addEventListener('pet-carry',carry);
     return()=>window.removeEventListener('pet-carry',carry);
-  },[spaceId,storageKey,cancelMotion,moveTo,pet.id]);
+  },[spaceId,storageKey,cancelMotion,moveTo,pet.id,rhythm.phase]);
 
   useEffect(() => {
     if (hidden || paused || reduced || sleeping || menu || dragging || obstructed || !pageVisible) {
@@ -125,11 +127,11 @@ function RoamingFriend({pet,index,total,spaceId,zh,onOpenHome}:{pet:Friend;index
       const target=fullScreenPetTarget(window.innerWidth,window.innerHeight,roamStep.current++); moveTo(target.x,target.y);
       setMood(roamStep.current%2?'run':'walk');
       motionTimer.current = setTimeout(() => { motionTimer.current = null; setMood('idle'); }, 2400);
-    }, 6500);
+    }, rhythm.phase==='evening'?14000:10000);
     return () => window.clearInterval(timer);
-  }, [hidden, paused, reduced, sleeping, menu, dragging, obstructed, pageVisible, cancelMotion, moveTo]);
+  }, [hidden, paused, reduced, sleeping, menu, dragging, obstructed, pageVisible, cancelMotion, moveTo,rhythm.phase]);
 
-  useEffect(() => { if (obstructed || !pageVisible || reduced) cancelMotion(); }, [obstructed, pageVisible, reduced, cancelMotion]);
+  useEffect(() => { if (obstructed || !pageVisible || reduced || sleeping) cancelMotion(); }, [obstructed, pageVisible, reduced, sleeping, cancelMotion]);
 
   useEffect(() => {
     if (!menu) return;
@@ -156,7 +158,7 @@ function RoamingFriend({pet,index,total,spaceId,zh,onOpenHome}:{pet:Friend;index
       if(detail.rest)socialToken.current=null;
     };
     window.addEventListener('pet-social-step',interact);return()=>window.removeEventListener('pet-social-step',interact);
-  },[spaceId,pet.id,index,paused,hidden,sleeping,menu,obstructed,reduced,dragging,cancelMotion,moveTo,zh]);
+  },[spaceId,pet.id,index,paused,hidden,sleeping,menu,obstructed,reduced,dragging,cancelMotion,moveTo,zh,rhythm.phase]);
 
   function pat() {
     cancelMotion(); setSleeping(false); setMood('happy');
@@ -208,6 +210,7 @@ function RoamingFriend({pet,index,total,spaceId,zh,onOpenHome}:{pet:Friend;index
     </div>
     {menu && <div id={`pet-companion-controls-${pet.id}`} className="pet-companion-controls" style={{ left: panelLeft, top: Math.max(8, panelTop) }} role="group" aria-label={zh ? '宠物互动' : 'Pet interactions'}>
       <div className="pet-companion-title"><strong>{pet.name}</strong><button type="button" aria-label={zh ? '关闭宠物菜单' : 'Close pet menu'} onClick={() => { setMenu(false); petButton.current?.focus(); }}>×</button></div>
+      <p className="pet-rhythm-note">{rhythm.description.emoji} {zh?rhythm.description.zh:rhythm.description.en}</p>{rhythm.manual&&<button type="button" className="text-action" onClick={()=>{cancelMotion();rhythm.resume();}}>{zh?'跟随自然作息':'Follow the day again'}</button>}
       <div className="pet-companion-actions"><button type="button" onClick={pat}>{zh ? '🖐 摸摸头' : '🖐 Head pats'}</button><button type="button" onClick={toss}>{zh ? '🎾 丢个球' : '🎾 Toss a ball'}</button><button type="button" onClick={() => { cancelMotion(); setSleeping(!sleeping); setMenu(false); say(sleeping ? (zh ? '睡醒啦！来玩吧～' : 'Awake! Let’s play!') : (zh ? '晚安，梦里也有你 ♡' : 'Sweet dreams with you ♡')); }}>{sleeping ? (zh ? '☀️ 叫醒它' : '☀️ Wake up') : (zh ? '🌙 睡一会儿' : '🌙 Take a nap')}</button><button type="button" onClick={() => { setMenu(false); onOpenHome(); }}>{zh ? '🎮 去游乐场' : '🎮 Playground'}</button></div>
       <div className="pet-companion-actions">{PET_POSES.map(pose=><button type="button" key={pose.mood} onClick={()=>{cancelMotion();setSleeping(false);setMood(pose.mood);setHeading(0);setMenu(false);say(zh?pose.zh:pose.en);}}>{pose.emoji} {zh?pose.zh:pose.en}</button>)}</div>
       {total>1&&<button type="button" className="pet-friends-invite" onClick={()=>window.dispatchEvent(new CustomEvent('pet-social-request',{detail:{spaceId,mode:'chase'}}))}>{zh?'🐾 找伙伴一起玩':'🐾 Play with friends'}</button>}
