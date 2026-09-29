@@ -461,7 +461,7 @@ export default function Home() {
   function batchToolbar(removed:boolean){return <BatchToolbar key={removed?'removed':'active'} count={selected.length} available={batchPool.length} removed={removed} busy={batchBusy} zh={locale==='zh-CN'} categories={categoryNames} onSelectAll={()=>setSelectedIds(batchPool.map(w=>w.id))} onClear={()=>setSelectedIds([])} onExit={()=>setBatchTarget(null)} onApply={applyBatch}/>;}
   function moreCommands(){return <>          {sections.filter(s=>!prefs.tabs.includes(s)).map(target=><button data-section-command type="button" key={target} aria-current={view===target?'page':undefined} onClick={()=>{setView(target);}}>{sectionName(target,locale==='zh-CN')}</button>)}
           <button data-section-command onClick={()=>shareInbox.setOpen(true)}>{locale==='zh-CN'?'收下小红书与链接':'Import shared text'}</button><button data-section-command onClick={()=>{setBatchTarget('active');setTrashOpen(false);if(view!=='wishes'&&view!=='done')setView('wishes');}}>{locale==='zh-CN'?'批量整理心愿':'Organize wishes'}</button><button data-section-command onClick={()=>setSettingsOpen(true)}>{locale==='zh-CN'?'布局偏好':'Layout preferences'}</button><button data-section-command onClick={()=>setBackupOpen(true)}>{locale==='zh-CN'?'导出与备份':'Export & backup'}</button>
-          <button data-section-command type="button" onClick={() => { setTrashOpen(v => !v);  }}>{locale === "zh-CN" ? "已删除心愿" : "Removed wishes"}</button><InstallApp zh={locale === "zh-CN"}/></>;}
+          <button data-section-command type="button" onClick={() => { setTrashOpen(v => !v);  }}>{locale === "zh-CN" ? "已删除心愿" : "Removed wishes"}</button></>;}
   function toggleMore(){const panel=document.getElementById('extra-sections');if(window.scrollY>220&&(!panel||panel.getBoundingClientRect().bottom<180)){setMoreDialog(true);return;}setMoreOpen(!moreOpen);}
   function closeMemory(){setMemoryId(null);if(searchReturn.current){searchReturn.current=false;setSearchOpen(true);}}
   async function deleteWish(id: string) { await setRemoved(id, true); }
@@ -489,6 +489,7 @@ export default function Home() {
           <button type="button" className="secondary more-toggle" aria-expanded={moreOpen||moreDialog} aria-controls={moreDialog?'more-dialog-sections':'extra-sections'} onClick={toggleMore}>{locale === "zh-CN" ? "更多" : "More"}</button>
           <button className="primary" type="button" onClick={openNewWish}><Plus size={18}/>{locale === "zh-CN" ? "记一个" : "Add a wish"}</button>
         </div>
+        <InstallApp zh={locale === "zh-CN"}/>
         {moreOpen && <nav className="extra-sections" id="extra-sections" aria-label={locale === "zh-CN" ? "更多栏目" : "More sections"}>
           {moreCommands()}
         </nav>}
