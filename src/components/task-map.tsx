@@ -16,7 +16,7 @@ export function TaskMap({wishes,zh,onDetails,onEdit}:{wishes:MapTask[];zh:boolea
   const [selected,setSelected]=useState(''),[filter,setFilter]=useState('all'),[category,setCategory]=useState('all'),[text,setText]=useState('');
   const [search,setSearch]=useState(''),[destination,setDestination]=useState('');
   const places=wishes.filter(w=>w.location||getMapSource(w.address,w.url));
-  const statuses={wanted:zh?'想去':'Want to go',planned:zh?'已计划':'Planned',done:zh?'已完成':'Completed'};
+  const statuses={wanted:zh?'想去':'Want to go',planned:zh?'已计划':'Planned',done:zh?'去过':'Visited'};
   const categories=Array.from(new Set(places.map(w=>w.category).filter(Boolean))).sort();
   const filtered=places.filter(w=>(filter==='all'||w.status===filter)&&(category==='all'||w.category===category)&&`${w.title} ${w.address} ${w.category}`.toLocaleLowerCase().includes(text.trim().toLocaleLowerCase()));
   const active=filtered.find(w=>w.id===selected)||filtered[0];
@@ -27,7 +27,7 @@ export function TaskMap({wishes,zh,onDetails,onEdit}:{wishes:MapTask[];zh:boolea
   function choose(id:string){setSelected(id);setDestination('');setSearch('');}
   function reset(){setFilter('all');setCategory('all');setText('');setDestination('');setSearch('');}
   return <section className="task-map" aria-label={zh?'任务地图':'Task map'}>
-    <header className="tm-header"><div><span className="tm-eyebrow">{zh?'一起出发':'PLACES TO EXPERIENCE'}</span><h1>{zh?'愿望地图':'Your places'}</h1><p>{zh?'把想去的地方，变成下一次出发。':'Turn the places on your list into your next outing.'}</p></div><div className="tm-total"><MapPin size={18}/><strong>{places.length}</strong><span>{zh?'个地点':'places'}</span></div></header>
+    <header className="tm-header"><div><span className="tm-eyebrow">{zh?'一起出发':'PLACES TO EXPERIENCE'}</span><h1>{zh?'愿望地图':'Your places'}</h1><p>{zh?'想去的、计划中的、已经去过的，都在这里。':'Your future plans and places you have visited, together on one map.'}</p></div><div className="tm-total"><MapPin size={18}/><strong>{places.length}</strong><span>{zh?'个地点':'places'}</span></div></header>
     <div className="tm-shell"><aside className="tm-sidebar" aria-label={zh?'地点列表':'Places'}>
       <div className="tm-sidebar-head"><h2>{zh?'我的地点':'Saved places'}</h2><span>{filtered.length} / {places.length}</span></div>
       <label className="tm-find"><Search size={16}/><input aria-label={zh?'筛选任务地点':'Filter saved places'} value={text} onChange={e=>{setText(e.target.value);setDestination('');}} placeholder={zh?'搜索任务、地址或分类':'Search tasks, addresses, categories'}/>{text&&<button type="button" aria-label={zh?'清除搜索':'Clear search'} onClick={()=>setText('')}><X size={14}/></button>}</label>

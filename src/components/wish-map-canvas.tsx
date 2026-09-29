@@ -30,6 +30,7 @@ export function WishMapCanvas({ wishes, selected, onSelect, zh }: { wishes: MapT
     group.clearLayers();
     const current: MapTask[] = JSON.parse(signature).map(([id, title, status, location]: [string,string,MapTask["status"],MapTask["location"]]) => ({ id, title, status, location } as MapTask));
     const bounds = L.latLngBounds([]);
+    const labels = {wanted:zh?"想去":"Want to go",planned:zh?"已计划":"Planned",done:zh?"去过":"Visited"};
     // Group identical coordinates so every wish remains selectable at shared venues.
     const groups = new Map<string, MapTask[]>();
     for (const wish of current) {
@@ -39,19 +40,22 @@ export function WishMapCanvas({ wishes, selected, onSelect, zh }: { wishes: MapT
     for (const samePlace of groups.values()) {
       const first = samePlace[0], point: L.LatLngTuple = [first.location!.latitude, first.location!.longitude];
       bounds.extend(point);
-      const marker = L.marker(point, { title: samePlace.map(w => w.title).join(" · "), icon: L.divIcon({ className: "wish-map-pin", html: `<span>${samePlace.length > 1 ? samePlace.length : "♥"}</span>`, iconSize: [34, 40], iconAnchor: [17, 36] }) }).addTo(group);
+      const status = samePlace.every(w => w.status === first.status) ? first.status : "mixed";
+      const symbol = samePlace.length > 1 ? samePlace.length : status === "done" ? "✓" : status === "planned" ? "◷" : "♥";
+      const marker = L.marker(point, { title: samePlace.map(w => w.title).join(" · "), icon: L.divIcon({ className: `wish-map-pin status-${status}`, html: `<span>${symbol}</span>`, iconSize: [34, 40], iconAnchor: [17, 36] }) }).addTo(group);
       const content = document.createElement("div"); content.className = "wish-map-popup";
-      samePlace.forEach(wish => { const button = document.createElement("button"); button.type = "button"; button.textContent = wish.title; button.addEventListener("click", () => select.current(wish.id)); content.append(button); });
-      marker.getElement()?.setAttribute("aria-label", samePlace.map(w => w.title).join(" · "));
+      samePlace.forEach(wish => { const button = document.createElement("button"); button.type = "button"; button.textContent = `${labels[wish.status]} · ${wish.title}`; button.addEventListener("click", () => select.current(wish.id)); content.append(button); });
+      marker.getElement()?.setAttribute("aria-label", samePlace.map(w => `${labels[w.status]} · ${w.title}`).join(" · "));
       marker.bindPopup(content);
       marker.on("click", () => select.current(first.id));
     }
     if (bounds.isValid()) instance.fitBounds(bounds.pad(0.18), { maxZoom: 14, animate: false });
-  }, [signature, retry]);
+  }, [signature, retry, zh]);
   useEffect(() => {
     const chosen = wishes.find(w => w.id === selected);
     if (chosen?.location && map.current) map.current.setView([chosen.location.latitude, chosen.location.longitude], Math.max(map.current.getZoom(), 13), { animate: false });
   }, [selected, signature, retry]);
+  const labels = {wanted:zh?"想去":"Want to go",planned:zh?"已计划":"Planned",done:zh?"去过":"Visited"};
   function showAll() { if (!pins.length || !map.current) return; map.current.fitBounds(L.latLngBounds(pins.map(w => [w.location!.latitude,w.location!.longitude] as L.LatLngTuple)).pad(.18), {maxZoom:14}); }
-  return <div className="wish-map-wrap"><div ref={host} className="wish-map-canvas" aria-label={zh ? "心愿地点地图" : "Wish locations map"}/><button type="button" className="map-fit secondary" disabled={!pins.length} onClick={showAll}>{zh ? `查看全部 ${pins.length} 个标记` : `Show all ${pins.length} pins`}</button>{!pins.length && <p className="map-hint">{zh ? "在心愿编辑中搜索并选择地点，即可显示标记。" : "Search and select a place in the wish editor to add a pin."}</p>}{failed && <div className="map-tile-error" role="status">{zh ? "底图加载失败，地点列表仍可使用。" : "Map tiles unavailable. Your places are still listed."}<button onClick={() => { setFailed(false); setRetry(v => v + 1); }}>{zh ? "重试" : "Retry"}</button></div>}</div>;
+  return <div className="wish-map-wrap"><div ref={host} className="wish-map-canvas" aria-label={zh ? "心愿地点地图" : "Wish locations map"}/><div className="map-legend" aria-label={zh?"地图标记图例":"Map legend"}>{(["wanted","planned","done"] as const).map(status=><span key={status}><i className={`status-${status}`} aria-hidden="true">{status==="done"?"✓":status==="planned"?"◷":"♥"}</i>{labels[status]} {pins.filter(w=>w.status===status).length}</span>)}</div><button type="button" className="map-fit secondary" disabled={!pins.length} onClick={showAll}>{zh ? `查看全部 ${pins.length} 个标记` : `Show all ${pins.length} pins`}</button>{!pins.length && <p className="map-hint">{zh ? "在心愿编辑中搜索并选择地点，即可显示标记。" : "Search and select a place in the wish editor to add a pin."}</p>}{failed && <div className="map-tile-error" role="status">{zh ? "底图加载失败，地点列表仍可使用。" : "Map tiles unavailable. Your places are still listed."}<button onClick={() => { setFailed(false); setRetry(v => v + 1); }}>{zh ? "重试" : "Retry"}</button></div>}</div>;
 }
