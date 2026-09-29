@@ -7,6 +7,8 @@ import "./everyday.css";
 import "./timeline-batch.css";
 import "./companion-calendar.css";
 import "./share-import.css";
+import "./xhs-preview.css";
+import { XhsLinkCard } from "@/components/xhs-link-card";
 import { ShareImport } from "@/components/share-import";
 import { useShareInbox } from "@/components/share-inbox";
 import { isRedNote, type SharedWish } from "@/lib/share-import";
@@ -544,7 +546,7 @@ export default function Home() {
                   {wish.note && <p>{wish.note}</p>}
                   {wish.status === "done" && wish.completionNote && <p className="completion-note">{wish.completionNote}</p>}
                   {wish.address && <p className="wish-meta"><MapPin size={14} />{wish.address}</p>}
-                  {wish.url && <a href={wish.url} target="_blank" rel="noopener noreferrer"><Link2 size={14} />{isRedNote(wish.url)?(locale==='zh-CN'?'回小红书看原笔记':'Open in Xiaohongshu'):new URL(wish.url).hostname}<ArrowUpRight size={14} /></a>}
+                  {wish.url && (isRedNote(wish.url)?<XhsLinkCard url={wish.url} title={wish.title} spaceId={spaceId} zh={locale==='zh-CN'}/>:<a href={wish.url} target="_blank" rel="noopener noreferrer"><Link2 size={14} />{new URL(wish.url).hostname}<ArrowUpRight size={14} /></a>)}
                   {wish.checklist.length > 0 && <div className="wish-checklist">
                     {wish.checklist.map((item) => <label key={item.id}>
                       <input type="checkbox" checked={item.completed} disabled={sync.pending.some(p=>p.wish.id===wish.id)} onChange={() => void toggleChecklist(wish.id, item)} />
@@ -576,7 +578,7 @@ export default function Home() {
       {inspected&&<LifeModal title={locale==='zh-CN'?'此设备上的版本':'Version on this device'} onClose={()=>{setInspected(null);if(searchReturn.current){searchReturn.current=false;setSearchOpen(true);}}}><div className="pending-preview"><p className="life-muted">{locale==='zh-CN'?'我的待同步内容':'My pending changes'}</p><h3>{inspected.title}</h3><p>{inspected.note}</p><p>{inspected.address}</p><p>{inspected.completionNote}</p><p>{inspected.plannedDate}</p>{inspected.checklist.map(i=><p key={i.id}>{i.completed?'✓':'○'} {i.label}</p>)}</div>{allWishes.filter(w=>w.id===inspected.id).map(cloud=><div className="pending-preview cloud-preview" key={cloud.id}><p className="life-muted">{locale==='zh-CN'?'最近载入的云端版本':'Last loaded cloud version'}</p><h3>{cloud.title}</h3><p>{cloud.note}</p><p>{cloud.address}</p><p>{cloud.completionNote}</p><p>{cloud.plannedDate}</p>{cloud.checklist.map(i=><p key={i.id}>{i.completed?'✓':'○'} {i.label}</p>)}</div>)}<button className="secondary" onClick={()=>{setShare({title:inspected.title,note:inspected.note,address:inspected.address});setInspected(null);}}>{locale==='zh-CN'?'生成卡片':'Create card'}</button></LifeModal>}
       {spaceId && experienceId && wishes.find(w=>w.id===experienceId) && <WishExperience key={`${spaceId}:${experienceId}`} spaceId={spaceId} wish={wishes.find(w=>w.id===experienceId)!} wishes={wishes} zh={locale==="zh-CN"} onClose={()=>setExperienceId(null)} onBackground={memoryBackground}/>}
       {undoId && <div className="undo-toast" role="status"><span>{locale === "zh-CN" ? "心愿已移到已删除列表" : "Wish moved to removed list"}</span><button disabled={!!removeBusy||sync.pending.some(p=>p.wish.id===undoId)} onClick={() => void setRemoved(undoId, false)}>{locale === "zh-CN" ? "撤销" : "Undo"}</button></div>}
-      {shareInbox.open&&<ShareImport key={draftKey||'waiting'} zh={locale==='zh-CN'} raw={shareInbox.raw} onRaw={shareInbox.update} onClose={()=>shareInbox.setOpen(false)} ready={!!draftKey} wishes={wishes} hasDraft={!!(draftKey&&readDrafts(localStorage,draftKey).new)} onImport={importSharedWish} onExisting={w=>{shareInbox.clear();openEditWish(w);}} onDraft={()=>{shareInbox.setOpen(false);openNewWish();}}/>}
+      {shareInbox.open&&<ShareImport spaceId={spaceId} key={draftKey||'waiting'} zh={locale==='zh-CN'} raw={shareInbox.raw} onRaw={shareInbox.update} onClose={()=>shareInbox.setOpen(false)} ready={!!draftKey} wishes={wishes} hasDraft={!!(draftKey&&readDrafts(localStorage,draftKey).new)} onImport={importSharedWish} onExisting={w=>{shareInbox.clear();openEditWish(w);}} onDraft={()=>{shareInbox.setOpen(false);openNewWish();}}/>}
       {adding && <div className="dialog-backdrop">
         <div className="dialog wish-editor-dialog" onKeyDown={event => {
           if(event.key==='Escape'&&!wishSaving){event.stopPropagation();resetEditor();return;}
@@ -603,6 +605,7 @@ export default function Home() {
             <section className="wish-editor-notes"><h3>{locale === "zh-CN" ? "随手补充 · 可选" : "A little more · optional"}</h3>
             <label>{t.note}<textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} /></label>
             <label>{t.pasteLink}<input type="url" value={url} onChange={(e) => { setUrl(e.target.value); setError(""); }} placeholder="https://" /></label>
+            {isRedNote(url)&&<XhsLinkCard key={url} url={url} title={title} spaceId={spaceId} zh={locale==='zh-CN'}/>}
             <PersistentDisclosure name="wish-checklist" initiallyOpen={false} title={`${t.checklist} · ${t.optional}`}><fieldset className="checklist-editor" aria-label={t.checklist}>
               {checklistDraft.map((item, index) => <div key={item.id}>
                 <input aria-label={`${t.checklistItem} ${index + 1}`} value={item.label} onChange={(event) => setChecklistDraft((items) => items.map((entry, itemIndex) => itemIndex === index ? { ...entry, label: event.target.value } : entry))} />
